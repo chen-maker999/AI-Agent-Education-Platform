@@ -1,0 +1,2322 @@
+# AI-Agent-Education-Platform API 接口文档
+
+## 文档说明
+
+本文档包含可嵌入式跨课程AI Agent通用架构平台的所有API接口及其详细注释。
+
+**基础URL**: `http://localhost:8000`
+
+**API前缀**: `/api/v1`
+
+**认证方式**: JWT Bearer Token
+
+---
+
+## 目录
+
+1. [BASE - 基础支撑层](#base---基础支撑层)
+   - [认证服务 (Auth)](#认证服务-auth)
+   - [角色管理 (Roles)](#角色管理-roles)
+2. [DATA - 数据融合层](#data---数据融合层)
+   - [数据采集服务 (Collect)](#数据采集服务-collect)
+   - [作业存储服务 (Homework)](#作业存储服务-homework)
+   - [学生画像服务 (Portrait)](#学生画像服务-portrait)
+3. [KNOWLEDGE - 知识管理层](#knowledge---知识管理层)
+   - [知识点管理 (Knowledge)](#知识点管理-knowledge)
+   - [知识图谱 (Graph)](#知识图谱-graph)
+4. [INTELLIGENCE - 智能核心层](#intelligence---智能核心层)
+   - [智能问答 (Chat)](#智能问答-chat)
+   - [智能批注 (Annotation)](#智能批注-annotation)
+   - [掌握度评估 (Evaluate)](#掌握度评估-evaluate)
+
+---
+
+## BASE - 基础支撑层
+
+### 认证服务 (Auth)
+
+**服务路径**: `/api/v1/auth`
+
+#### POST /login - 用户登录
+
+**描述**: 使用用户名和密码登录系统
+
+**请求体**:
+```json
+{
+  "username": "string",  // 用户名或邮箱
+  "password": "string"   // 密码
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "登录成功",
+  "data": {
+    "access_token": "string",    // 访问令牌
+    "refresh_token": "string",   // 刷新令牌
+    "token_type": "Bearer",      // 令牌类型
+    "expires_in": 3600           // 过期时间(秒)
+  }
+}
+```
+
+---
+
+#### POST /register - 用户注册
+
+**描述**: 注册新用户账号
+
+**请求体**:
+```json
+{
+  "username": "string",  // 用户名（3-50字符，字母开头）
+  "email": "string",     // 邮箱地址
+  "password": "string",  // 密码（至少8位，包含大小写字母和数字）
+  "role": "string"       // 用户角色（student/teacher/admin）
+}
+```
+
+**响应**:
+```json
+{
+  "code": 201,
+  "message": "注册成功",
+  "data": {
+    "id": "uuid",
+    "username": "string",
+    "email": "string",
+    "role": "string",
+    "status": "string",
+    "roles": ["string"],
+    "permissions": ["string"],
+    "created_at": "datetime",
+    "updated_at": "datetime"
+  }
+}
+```
+
+---
+
+#### POST /logout - 用户登出
+
+**描述**: 退出登录
+
+**认证**: 需要Bearer Token
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "登出成功"
+}
+```
+
+---
+
+#### POST /refresh - 刷新令牌
+
+**描述**: 使用刷新令牌获取新的访问令牌
+
+**请求体**:
+```json
+{
+  "refresh_token": "string"  // 刷新令牌
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "令牌刷新成功",
+  "data": {
+    "access_token": "string",
+    "refresh_token": "string",
+    "token_type": "Bearer",
+    "expires_in": 3600
+  }
+}
+```
+
+---
+
+#### GET /me - 获取当前用户信息
+
+**描述**: 获取当前登录用户的详细信息
+
+**认证**: 需要Bearer Token
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "获取成功",
+  "data": {
+    "id": "uuid",
+    "username": "string",
+    "email": "string",
+    "role": "string",
+    "status": "string",
+    "roles": ["string"],
+    "permissions": ["string"],
+    "created_at": "datetime",
+    "updated_at": "datetime"
+  }
+}
+```
+
+---
+
+### 角色管理 (Roles)
+
+**服务路径**: `/api/v1/roles`
+
+#### GET /roles - 获取角色列表
+
+**描述**: 分页获取系统中的所有角色
+
+**认证**: 需要Bearer Token
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| page | int | 否 | 页码，从1开始，默认1 |
+| page_size | int | 否 | 每页大小，最大100，默认10 |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "查询成功",
+  "data": {
+    "items": [
+      {
+        "id": "uuid",
+        "name": "string",
+        "code": "string",
+        "permissions": ["string"],
+        "created_at": "datetime"
+      }
+    ],
+    "total": 0,
+    "page_num": 1,
+    "size": 10,
+    "total_pages": 0
+  }
+}
+```
+
+---
+
+#### GET /roles/{role_id} - 获取角色详情
+
+**描述**: 根据角色ID获取角色详细信息
+
+**认证**: 需要Bearer Token
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| role_id | uuid | 角色ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "查询成功",
+  "data": {
+    "id": "uuid",
+    "name": "string",
+    "code": "string",
+    "permissions": ["string"],
+    "created_at": "datetime"
+  }
+}
+```
+
+---
+
+#### POST /roles - 创建角色
+
+**描述**: 创建新的角色
+
+**认证**: 需要 `role:create` 权限
+
+**请求体**:
+```json
+{
+  "name": "string",        // 角色名称
+  "code": "string",        // 角色编码
+  "permissions": ["string"] // 权限列表
+}
+```
+
+**响应**:
+```json
+{
+  "code": 201,
+  "message": "角色创建成功",
+  "data": {
+    "id": "uuid",
+    "name": "string",
+    "code": "string",
+    "permissions": ["string"],
+    "created_at": "datetime"
+  }
+}
+```
+
+---
+
+#### PUT /roles/{role_id} - 更新角色
+
+**描述**: 更新角色信息
+
+**认证**: 需要 `role:update` 权限
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| role_id | uuid | 角色ID |
+
+**请求体**:
+```json
+{
+  "name": "string",         // 角色名称（可选）
+  "permissions": ["string"] // 权限列表（可选）
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "角色更新成功",
+  "data": {
+    "id": "uuid",
+    "name": "string",
+    "code": "string",
+    "permissions": ["string"],
+    "created_at": "datetime"
+  }
+}
+```
+
+---
+
+#### DELETE /roles/{role_id} - 删除角色
+
+**描述**: 删除指定角色
+
+**认证**: 需要 `role:delete` 权限
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| role_id | uuid | 角色ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "角色删除成功"
+}
+```
+
+---
+
+#### GET /roles/{role_id}/permissions - 获取角色权限
+
+**描述**: 获取指定角色的所有权限
+
+**认证**: 需要Bearer Token
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| role_id | uuid | 角色ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "查询成功",
+  "data": [
+    {
+      "id": "uuid",
+      "name": "string",
+      "code": "string",
+      "resource": "string",
+      "action": "string"
+    }
+  ]
+}
+```
+
+---
+
+## DATA - 数据融合层
+
+### 数据采集服务 (Collect)
+
+**服务路径**: `/api/v1/collect`
+
+#### POST /behavior - 学习行为采集
+
+**描述**: 采集学习行为数据，包括观看时长、注意力分数、交互次数等
+
+**请求体**:
+```json
+{
+  "student_id": "uuid",       // 学生ID（必填）
+  "course_id": "uuid",        // 课程ID（必填）
+  "session_id": "uuid",       // 会话ID（必填）
+  "device_type": "string",    // 设备类型（web/mobile/tablet/desktop/other）
+  "platform": "string",       // 来源平台（self/chaoxing/dingtalk/mooc/other）
+  "watch_duration": 0,        // 观看时长（秒）
+  "attention_score": 0,       // 注意力分数（0-100）
+  "interaction_count": 0,     // 交互次数
+  "scroll_depth": 0,          // 滚动深度（百分比）
+  "event_time": "datetime",   // 事件发生时间
+  "extra_data": {}            // 扩展数据
+}
+```
+
+**响应**:
+```json
+{
+  "code": 201,
+  "message": "学习行为数据采集完成",
+  "data": {
+    "id": "uuid",
+    "status": "success",
+    "collected_at": "datetime"
+  }
+}
+```
+
+---
+
+#### POST /homework - 作业数据采集
+
+**描述**: 采集作业提交数据，包括作业内容、文件等
+
+**请求体**:
+```json
+{
+  "homework_id": "uuid",      // 作业ID（必填）
+  "student_id": "uuid",       // 学生ID（必填）
+  "course_id": "uuid",        // 课程ID（必填）
+  "platform": "string",       // 来源平台
+  "submit_time": "datetime",  // 提交时间
+  "content_type": "string",   // 内容类型
+  "content": "string",        // 作业内容
+  "file_url": "string",       // 文件URL
+  "file_hash": "string",      // 文件哈希值
+  "version": 0,               // 版本号
+  "extra_data": {}            // 扩展数据
+}
+```
+
+**响应**:
+```json
+{
+  "code": 201,
+  "message": "作业数据采集完成",
+  "data": {
+    "id": "uuid",
+    "status": "success",
+    "collected_at": "datetime"
+  }
+}
+```
+
+---
+
+#### POST /batch - 批量数据采集
+
+**描述**: 批量采集学习行为数据和作业数据
+
+**请求体**:
+```json
+{
+  "behavior_data": [],   // 学习行为数据列表
+  "homework_data": []    // 作业数据列表
+}
+```
+
+**响应**:
+```json
+{
+  "code": 201,
+  "message": "批量数据采集完成",
+  "data": {
+    "behavior_count": 0,
+    "homework_count": 0,
+    "status": "success"
+  }
+}
+```
+
+---
+
+#### GET /status - 采集状态查询
+
+**描述**: 查询采集服务的运行状态和统计信息
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "获取采集状态成功",
+  "data": {
+    "service_status": "running",
+    "kafka_connected": true,
+    "total_collected": 0,
+    "today_collected": 0,
+    "last_collect_time": "datetime"
+  }
+}
+```
+
+---
+
+#### POST /adapt/{platform} - 平台数据适配
+
+**描述**: 将第三方平台的原始数据适配为标准格式并采集
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| platform | string | 平台类型（chaoxing/dingtalk/mooc/other） |
+
+**请求体**:
+```json
+{
+  // 原始平台数据（格式因平台而异）
+}
+```
+
+**响应**:
+```json
+{
+  "code": 201,
+  "message": "平台数据适配完成",
+  "data": {
+    "adapted_count": 0,
+    "status": "success"
+  }
+}
+```
+
+---
+
+### 作业存储服务 (Homework)
+
+**服务路径**: `/api/v1/homework`
+
+#### POST /upload - 上传作业文件
+
+**描述**: 上传作业文件到OSS存储，支持多种文件类型
+
+**请求方式**: multipart/form-data
+
+**请求参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| file | file | 是 | 要上传的文件 |
+| homework_id | string | 是 | 作业ID |
+| student_id | string | 是 | 学生ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "作业文件上传成功",
+  "data": {
+    "homework_id": "string",
+    "file_url": "string",
+    "file_hash": "string",
+    "file_size": 0,
+    "mime_type": "string",
+    "uploaded_at": "datetime"
+  }
+}
+```
+
+---
+
+#### GET /{homework_id}/download - 获取作业下载链接
+
+**描述**: 获取作业文件的预签名下载URL
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| homework_id | string | 作业ID |
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| expires | int | 否 | URL过期时间(秒)，默认3600，最大86400 |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "获取下载链接成功",
+  "data": {
+    "download_url": "string",
+    "expires_at": "datetime"
+  }
+}
+```
+
+---
+
+#### GET /{homework_id} - 查询作业文件信息
+
+**描述**: 根据作业ID查询作业文件的详细信息
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| homework_id | string | 作业ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "查询成功",
+  "data": {
+    "homework_id": "string",
+    "student_id": "string",
+    "file_url": "string",
+    "file_hash": "string",
+    "file_size": 0,
+    "mime_type": "string",
+    "status": "string",
+    "created_at": "datetime",
+    "updated_at": "datetime"
+  }
+}
+```
+
+---
+
+#### DELETE /{homework_id} - 删除作业文件
+
+**描述**: 删除指定的作业文件及其OSS存储
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| homework_id | string | 作业ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "删除成功"
+}
+```
+
+---
+
+#### GET / - 列出作业文件
+
+**描述**: 根据条件列出作业文件列表
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| student_id | string | 否 | 学生ID |
+| homework_id | string | 否 | 作业ID |
+| status | string | 否 | 状态 |
+| page | int | 否 | 页码，默认1 |
+| page_size | int | 否 | 每页大小，默认10 |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "查询成功",
+  "data": {
+    "items": [],
+    "total": 0,
+    "page": 1,
+    "page_size": 10
+  }
+}
+```
+
+---
+
+#### GET /{homework_id}/presigned - 获取预签名URL
+
+**描述**: 获取作业文件的预签名URL，支持下载和上传
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| homework_id | string | 作业ID |
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| method | string | 否 | HTTP方法: GET或PUT，默认GET |
+| expires | int | 否 | 过期时间(秒)，默认3600 |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "获取预签名URL成功",
+  "data": {
+    "url": "string",
+    "method": "string",
+    "expires_at": "datetime"
+  }
+}
+```
+
+---
+
+#### GET /statistics/summary - 获取统计信息
+
+**描述**: 获取作业文件的统计信息
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| student_id | string | 否 | 学生ID（不传则统计所有） |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "获取统计信息成功",
+  "data": {
+    "total_files": 0,
+    "total_size": 0,
+    "by_status": {},
+    "by_type": {}
+  }
+}
+```
+
+---
+
+#### PATCH /{homework_id}/status - 更新文件状态
+
+**描述**: 更新作业文件的状态
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| homework_id | string | 作业ID |
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| status | string | 是 | 新状态: pending, uploaded, failed |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "状态更新成功"
+}
+```
+
+---
+
+### 学生画像服务 (Portrait)
+
+**服务路径**: `/api/v1/portrait`
+
+#### POST /generate - 生成学生画像
+
+**描述**: 根据学习数据生成学生画像
+
+**请求体**:
+```json
+{
+  "student_id": "uuid",       // 学生ID（必填）
+  "course_id": "uuid",        // 课程ID（可选）
+  "include_history": true     // 是否包含历史数据
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "student_id": "uuid",
+    "learning_style": "string",
+    "strengths": ["string"],
+    "weaknesses": ["string"],
+    "learning_patterns": {},
+    "generated_at": "datetime"
+  }
+}
+```
+
+---
+
+#### GET /{student_id} - 获取学生画像
+
+**描述**: 获取指定学生的画像信息
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| student_id | string | 学生ID |
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| course_id | string | 否 | 课程ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "student_id": "uuid",
+    "learning_style": "string",
+    "strengths": ["string"],
+    "weaknesses": ["string"],
+    "learning_patterns": {}
+  }
+}
+```
+
+---
+
+#### POST /group - 生成群体画像
+
+**描述**: 为一组学生生成群体画像
+
+**请求体**:
+```json
+{
+  "student_ids": ["uuid"],  // 学生ID列表（必填）
+  "course_id": "uuid"       // 课程ID（可选）
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "group_size": 0,
+    "common_strengths": ["string"],
+    "common_weaknesses": ["string"],
+    "distribution": {}
+  }
+}
+```
+
+---
+
+#### POST /pattern - 分析学习规律
+
+**描述**: 分析学生的学习规律
+
+**请求体**:
+```json
+{
+  "student_id": "uuid",    // 学生ID
+  "time_range": "30d"      // 时间范围（默认30天）
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "active_hours": [],
+    "preferred_days": [],
+    "study_duration_avg": 0,
+    "patterns": []
+  }
+}
+```
+
+---
+
+#### GET /{student_id}/strengths - 获取学习优势
+
+**描述**: 获取学生的学习优势
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| student_id | string | 学生ID |
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| course_id | string | 否 | 课程ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "strengths": [
+      {
+        "knowledge_point": "string",
+        "mastery_level": 0.0,
+        "evidence": ["string"]
+      }
+    ]
+  }
+}
+```
+
+---
+
+#### GET /{student_id}/weaknesses - 获取薄弱点
+
+**描述**: 获取学生的学习薄弱点
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| student_id | string | 学生ID |
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| course_id | string | 否 | 课程ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "weaknesses": [
+      {
+        "knowledge_point": "string",
+        "mastery_level": 0.0,
+        "suggestions": ["string"]
+      }
+    ]
+  }
+}
+```
+
+---
+
+#### GET /{student_id}/progress - 获取学习进度
+
+**描述**: 获取学生的学习进度
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| student_id | string | 学生ID |
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| course_id | string | 否 | 课程ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total_knowledge_points": 0,
+    "mastered_count": 0,
+    "learning_count": 0,
+    "progress_percentage": 0.0
+  }
+}
+```
+
+---
+
+#### POST /compare - 对比学生画像
+
+**描述**: 对比两个学生的画像
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| student_id_1 | string | 是 | 学生1 ID |
+| student_id_2 | string | 是 | 学生2 ID |
+| course_id | string | 否 | 课程ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "similarity_score": 0.0,
+    "common_strengths": ["string"],
+    "common_weaknesses": ["string"],
+    "differences": {}
+  }
+}
+```
+
+---
+
+#### PUT /{student_id} - 更新学生画像
+
+**描述**: 更新学生画像信息
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| student_id | string | 学生ID |
+
+**请求体**:
+```json
+{
+  // 要更新的字段
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {}
+}
+```
+
+---
+
+## KNOWLEDGE - 知识管理层
+
+### 知识点管理 (Knowledge)
+
+**服务路径**: `/api/v1/knowledge`
+
+#### POST /points - 创建知识点
+
+**描述**: 创建新的知识点
+
+**请求体**:
+```json
+{
+  "course_id": "uuid",        // 所属课程ID（必填）
+  "name": "string",           // 知识点名称（必填）
+  "code": "string",           // 知识点编码（必填）
+  "description": "string",    // 知识点描述
+  "parent_id": "uuid",        // 父知识点ID
+  "level": 1,                 // 知识点层级
+  "sort_order": 0,            // 排序顺序
+  "metadata": {               // 扩展元数据
+    "difficulty": "easy",     // 难度：easy/medium/hard
+    "importance": "high",     // 重要性：low/medium/high/critical
+    "estimated_time": 30,     // 预计学习时长(分钟)
+    "tags": ["string"]        // 标签
+  }
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": "uuid",
+    "course_id": "uuid",
+    "name": "string",
+    "code": "string",
+    "description": "string",
+    "parent_id": "uuid",
+    "level": 1,
+    "sort_order": 0,
+    "status": "active",
+    "metadata": {},
+    "created_at": "datetime",
+    "updated_at": "datetime"
+  }
+}
+```
+
+---
+
+#### GET /points/{point_id} - 获取知识点详情
+
+**描述**: 根据ID获取知识点详细信息
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| point_id | string | 知识点ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": "uuid",
+    "course_id": "uuid",
+    "name": "string",
+    "code": "string",
+    "description": "string",
+    "parent_id": "uuid",
+    "level": 1,
+    "sort_order": 0,
+    "status": "active",
+    "metadata": {},
+    "created_at": "datetime",
+    "updated_at": "datetime"
+  }
+}
+```
+
+---
+
+#### PUT /points/{point_id} - 更新知识点
+
+**描述**: 更新知识点信息
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| point_id | string | 知识点ID |
+
+**请求体**:
+```json
+{
+  "name": "string",
+  "description": "string",
+  "sort_order": 0,
+  "metadata": {}
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {}
+}
+```
+
+---
+
+#### DELETE /points/{point_id} - 删除知识点
+
+**描述**: 删除指定知识点
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| point_id | string | 知识点ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "删除成功"
+}
+```
+
+---
+
+#### GET /points - 获取知识点列表
+
+**描述**: 分页获取知识点列表
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| course_id | string | 否 | 课程ID |
+| parent_id | string | 否 | 父知识点ID |
+| status | string | 否 | 状态 |
+| page | int | 否 | 页码，默认1 |
+| page_size | int | 否 | 每页大小，默认20 |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "items": [],
+    "total": 0
+  }
+}
+```
+
+---
+
+#### GET /points/{point_id}/children - 获取子知识点列表
+
+**描述**: 获取指定知识点的所有子知识点
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| point_id | string | 知识点ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    {
+      "id": "uuid",
+      "name": "string",
+      "code": "string",
+      "level": 2
+    }
+  ]
+}
+```
+
+---
+
+#### GET /points/{point_id}/tree - 获取知识点树
+
+**描述**: 获取以指定知识点为根的知识点树
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| point_id | string | 知识点ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": "uuid",
+    "name": "string",
+    "children": []
+  }
+}
+```
+
+---
+
+#### GET /courses/{course_id}/tree - 获取课程知识点树
+
+**描述**: 获取指定课程的完整知识点树
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| course_id | string | 课程ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "course_id": "uuid",
+    "course_name": "string",
+    "knowledge_tree": []
+  }
+}
+```
+
+---
+
+#### GET /schema - 获取知识标准化建模Schema
+
+**描述**: 获取知识点数据结构的JSON Schema定义
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "KnowledgePoint",
+    "type": "object",
+    "required": ["name", "code", "course_id"],
+    "properties": {}
+  }
+}
+```
+
+---
+
+### 知识图谱 (Graph)
+
+**服务路径**: `/api/v1/graph`
+
+#### POST /nodes - 创建知识节点
+
+**描述**: 在知识图谱中创建新节点
+
+**请求体**:
+```json
+{
+  "node_id": "string",        // 节点ID（必填）
+  "name": "string",           // 节点名称（必填）
+  "node_type": "string",      // 节点类型（必填）
+  "course_id": "uuid",        // 所属课程ID
+  "properties": {}            // 节点属性
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "node_id": "string",
+    "name": "string",
+    "node_type": "string",
+    "course_id": "uuid",
+    "properties": {},
+    "created_at": "datetime"
+  }
+}
+```
+
+---
+
+#### GET /nodes/{node_id} - 获取节点详情
+
+**描述**: 根据节点ID获取节点详细信息
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| node_id | string | 节点ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "node_id": "string",
+    "name": "string",
+    "node_type": "string",
+    "properties": {}
+  }
+}
+```
+
+---
+
+#### DELETE /nodes/{node_id} - 删除节点
+
+**描述**: 删除指定节点及其关联的边
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| node_id | string | 节点ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "删除成功"
+}
+```
+
+---
+
+#### POST /edges - 创建知识边
+
+**描述**: 在两个节点之间创建关系边
+
+**请求体**:
+```json
+{
+  "source_id": "string",      // 源节点ID（必填）
+  "target_id": "string",      // 目标节点ID（必填）
+  "edge_type": "string",      // 边类型（必填）
+  "weight": 1.0,              // 权重
+  "properties": {}            // 边属性
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "source_id": "string",
+    "target_id": "string",
+    "edge_type": "string",
+    "weight": 1.0,
+    "properties": {}
+  }
+}
+```
+
+---
+
+#### DELETE /edges - 删除边
+
+**描述**: 删除两个节点之间的关系边
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| source_id | string | 是 | 源节点ID |
+| target_id | string | 是 | 目标节点ID |
+| edge_type | string | 否 | 边类型 |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "删除成功"
+}
+```
+
+---
+
+#### POST /query - 查询图谱
+
+**描述**: 根据条件查询知识图谱
+
+**请求体**:
+```json
+{
+  "node_id": "string",        // 起始节点ID
+  "node_type": "string",      // 节点类型过滤
+  "relation_type": "string",  // 关系类型过滤
+  "depth": 2,                 // 查询深度
+  "limit": 100                // 结果数量限制
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "nodes": [],
+    "edges": [],
+    "total_nodes": 0,
+    "total_edges": 0
+  }
+}
+```
+
+---
+
+#### GET /nodes/{node_id}/neighbors - 获取邻居节点
+
+**描述**: 获取指定节点的邻居节点
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| node_id | string | 节点ID |
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| relation_type | string | 否 | 关系类型过滤 |
+| direction | string | 否 | 方向：incoming/outgoing/both，默认both |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "incoming": [],
+    "outgoing": []
+  }
+}
+```
+
+---
+
+#### GET /path - 查找路径
+
+**描述**: 查找两个节点之间的最短路径
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| source_id | string | 是 | 源节点ID |
+| target_id | string | 是 | 目标节点ID |
+| max_depth | int | 否 | 最大深度，默认5 |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "found": true,
+    "path": [],
+    "length": 0
+  }
+}
+```
+
+---
+
+#### POST /cross-course-mapping - 创建跨课程映射
+
+**描述**: 创建跨课程的知识点映射关系
+
+**请求体**:
+```json
+{
+  "source_course_id": "uuid",     // 源课程ID（必填）
+  "target_course_id": "uuid",     // 目标课程ID（必填）
+  "similarity_threshold": 0.7     // 相似度阈值
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    {
+      "source_node_id": "string",
+      "target_node_id": "string",
+      "similarity": 0.0,
+      "mapping_type": "string"
+    }
+  ]
+}
+```
+
+---
+
+## INTELLIGENCE - 智能核心层
+
+### 智能问答 (Chat)
+
+**服务路径**: `/api/v1/chat`
+
+#### POST /message - 发送消息
+
+**描述**: 发送消息并获取AI回复
+
+**请求体**:
+```json
+{
+  "session_id": "uuid",       // 会话ID（可选，新会话不传）
+  "student_id": "uuid",       // 学生ID（必填）
+  "course_id": "uuid",        // 课程ID（可选）
+  "message": "string",        // 用户消息（必填）
+  "context": {}               // 上下文信息
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "session_id": "uuid",
+    "message_id": "uuid",
+    "response": "string",
+    "sources": [],
+    "created_at": "datetime"
+  }
+}
+```
+
+---
+
+#### POST /feedback - 提交反馈
+
+**描述**: 对AI回复进行评分反馈
+
+**请求体**:
+```json
+{
+  "message_id": "uuid",       // 消息ID（必填）
+  "session_id": "uuid",       // 会话ID（必填）
+  "rating": 5,                // 评分1-5（必填）
+  "comment": "string"         // 评论（可选）
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "feedback_id": "uuid",
+    "created_at": "datetime"
+  }
+}
+```
+
+---
+
+#### GET /history/{session_id} - 获取对话历史
+
+**描述**: 获取指定会话的对话历史
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| session_id | string | 会话ID |
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| limit | int | 否 | 返回条数，默认50 |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "session_id": "uuid",
+    "messages": [
+      {
+        "id": "uuid",
+        "role": "user/assistant",
+        "content": "string",
+        "created_at": "datetime"
+      }
+    ],
+    "total": 0
+  }
+}
+```
+
+---
+
+#### POST /suggest - 获取推荐问题
+
+**描述**: 根据上下文获取推荐问题
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| student_id | string | 是 | 学生ID |
+| course_id | string | 否 | 课程ID |
+| context | string | 否 | 上下文 |
+| count | int | 否 | 推荐数量，默认5 |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "suggestions": [
+      {
+        "question": "string",
+        "relevance": 0.0
+      }
+    ]
+  }
+}
+```
+
+---
+
+#### GET /knowledge/{knowledge_point_id} - 知识点问答
+
+**描述**: 针对特定知识点进行问答
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| knowledge_point_id | string | 知识点ID |
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| question | string | 是 | 问题 |
+| student_id | string | 是 | 学生ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "answer": "string",
+    "related_points": [],
+    "resources": []
+  }
+}
+```
+
+---
+
+#### POST /correct - 错误认知纠正
+
+**描述**: 纠正学生的错误认知
+
+**请求体**:
+```json
+{
+  "student_id": "uuid",       // 学生ID（必填）
+  "misconception": "string",  // 错误认知描述（必填）
+  "context": {}               // 上下文信息
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "correction": "string",
+    "explanation": "string",
+    "related_knowledge": []
+  }
+}
+```
+
+---
+
+#### GET /stats/{student_id} - 获取问答统计
+
+**描述**: 获取学生的问答统计数据
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| student_id | string | 学生ID |
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| period | string | 否 | 时间范围：day/week/month，默认week |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total_questions": 0,
+    "avg_rating": 0.0,
+    "top_topics": [],
+    "improvement_areas": []
+  }
+}
+```
+
+---
+
+### 智能批注 (Annotation)
+
+**服务路径**: `/api/v1/annotation`
+
+#### POST /comment - 生成评语
+
+**描述**: 根据作业内容生成智能评语
+
+**请求体**:
+```json
+{
+  "content": "string",        // 作业内容（必填）
+  "content_type": "string",   // 内容类型，默认text
+  "score": 0.0,               // 得分
+  "errors": [],               // 错误列表
+  "context": {},              // 上下文信息
+  "style": "encouraging"      // 评语风格
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "comment": "string",
+    "highlights": [],
+    "suggestions": []
+  }
+}
+```
+
+---
+
+#### POST /markup - 生成批注
+
+**描述**: 在作业内容上生成批注标记
+
+**请求体**:
+```json
+{
+  "content": "string",            // 作业内容（必填）
+  "error_position": {             // 错误位置（必填）
+    "start": 0,
+    "end": 0
+  },
+  "error_type": "string",         // 错误类型（必填）
+  "suggestion": "string"          // 修改建议
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "markup": {
+      "position": {},
+      "type": "string",
+      "content": "string",
+      "suggestion": "string"
+    }
+  }
+}
+```
+
+---
+
+#### POST /batch - 批量生成批注
+
+**描述**: 批量为作业生成批注
+
+**请求体**:
+```json
+{
+  "homework_id": "uuid",      // 作业ID（必填）
+  "student_id": "uuid",       // 学生ID（必填）
+  "content": "string",        // 作业内容（必填）
+  "errors": [],               // 错误列表（必填）
+  "score": 0.0                // 得分（必填）
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "homework_id": "uuid",
+    "annotations": [],
+    "summary": "string"
+  }
+}
+```
+
+---
+
+#### POST /summary - 生成总结评语
+
+**描述**: 生成学生学习总结评语
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| student_id | string | 是 | 学生ID |
+| course_id | string | 是 | 课程ID |
+| period | string | 否 | 时间范围，默认week |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "summary": "string",
+    "achievements": [],
+    "improvements": [],
+    "recommendations": []
+  }
+}
+```
+
+---
+
+#### GET /templates - 获取评语模板
+
+**描述**: 获取评语模板列表
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| category | string | 否 | 模板分类 |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "templates": [
+      {
+        "id": "uuid",
+        "name": "string",
+        "category": "string",
+        "template": "string",
+        "variables": []
+      }
+    ]
+  }
+}
+```
+
+---
+
+#### POST /templates - 创建评语模板
+
+**描述**: 创建新的评语模板
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| name | string | 是 | 模板名称 |
+| category | string | 是 | 模板分类 |
+| template | string | 是 | 模板内容 |
+| variables | array | 否 | 变量列表 |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": "uuid",
+    "name": "string",
+    "created_at": "datetime"
+  }
+}
+```
+
+---
+
+#### GET /styles - 获取评语风格列表
+
+**描述**: 获取可用的评语风格列表
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "styles": [
+      {
+        "code": "string",
+        "name": "string",
+        "description": "string"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 掌握度评估 (Evaluate)
+
+**服务路径**: `/api/v1/evaluate`
+
+#### POST /mastery - 评估知识点掌握度
+
+**描述**: 评估学生对知识点的掌握程度
+
+**请求体**:
+```json
+{
+  "student_id": "uuid",           // 学生ID（必填）
+  "knowledge_point_id": "uuid",   // 知识点ID
+  "course_id": "uuid",            // 课程ID
+  "include_history": true         // 是否包含历史趋势
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "student_id": "uuid",
+    "knowledge_point_id": "uuid",
+    "mastery_level": 0.0,
+    "confidence": 0.0,
+    "history": [],
+    "last_updated": "datetime"
+  }
+}
+```
+
+---
+
+#### POST /mastery/batch - 批量评估知识点掌握度
+
+**描述**: 批量评估学生对多个知识点的掌握程度
+
+**请求体**:
+```json
+{
+  "student_id": "uuid",               // 学生ID（必填）
+  "knowledge_point_ids": ["uuid"],    // 知识点ID列表（必填）
+  "course_id": "uuid"                 // 课程ID
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "student_id": "uuid",
+    "evaluations": [
+      {
+        "knowledge_point_id": "uuid",
+        "mastery_level": 0.0,
+        "confidence": 0.0
+      }
+    ]
+  }
+}
+```
+
+---
+
+#### POST /mastery/group - 群体掌握度评估
+
+**描述**: 评估一群学生对某知识点的掌握情况
+
+**请求体**:
+```json
+{
+  "student_ids": ["uuid"],        // 学生ID列表（必填）
+  "knowledge_point_id": "uuid",   // 知识点ID（必填）
+  "course_id": "uuid"             // 课程ID
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "knowledge_point_id": "uuid",
+    "group_size": 0,
+    "average_mastery": 0.0,
+    "distribution": {
+      "low": 0,
+      "medium": 0,
+      "high": 0
+    }
+  }
+}
+```
+
+---
+
+#### GET /weakness/{student_id} - 获取薄弱知识点
+
+**描述**: 获取学生掌握度较低的知识点
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| student_id | string | 学生ID |
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| course_id | string | 否 | 课程ID |
+| top_k | int | 否 | 返回数量，默认10 |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "weaknesses": [
+      {
+        "knowledge_point_id": "uuid",
+        "name": "string",
+        "mastery_level": 0.0,
+        "priority": 0
+      }
+    ]
+  }
+}
+```
+
+---
+
+#### GET /strength/{student_id} - 获取优势知识点
+
+**描述**: 获取学生掌握度较高的知识点
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| student_id | string | 学生ID |
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| course_id | string | 否 | 课程ID |
+| top_k | int | 否 | 返回数量，默认10 |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "strengths": [
+      {
+        "knowledge_point_id": "uuid",
+        "name": "string",
+        "mastery_level": 0.0
+      }
+    ]
+  }
+}
+```
+
+---
+
+#### GET /trend/{student_id} - 获取掌握度趋势
+
+**描述**: 获取学生知识点掌握度的变化趋势
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| student_id | string | 学生ID |
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| knowledge_point_id | string | 是 | 知识点ID |
+| time_range | string | 否 | 时间范围，默认30d |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "knowledge_point_id": "uuid",
+    "trend": [
+      {
+        "date": "date",
+        "mastery_level": 0.0
+      }
+    ],
+    "improvement_rate": 0.0
+  }
+}
+```
+
+---
+
+#### POST /update - 更新掌握度
+
+**描述**: 根据答题结果更新知识点掌握度
+
+**请求体**:
+```json
+{
+  "student_id": "uuid",           // 学生ID（必填）
+  "knowledge_point_id": "uuid",   // 知识点ID（必填）
+  "score": 0.0,                   // 得分（必填）
+  "is_correct": true,             // 是否正确（必填）
+  "difficulty": 0.5               // 题目难度，默认0.5
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "old_mastery": 0.0,
+    "new_mastery": 0.0,
+    "change": 0.0
+  }
+}
+```
+
+---
+
+#### GET /statistics/{student_id} - 获取掌握度统计
+
+**描述**: 获取学生的整体掌握度统计
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| student_id | string | 学生ID |
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| course_id | string | 否 | 课程ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total_points": 0,
+    "mastered_points": 0,
+    "average_mastery": 0.0,
+    "by_level": {
+      "beginner": 0,
+      "intermediate": 0,
+      "advanced": 0
+    }
+  }
+}
+```
+
+---
+
+#### GET /report/{student_id} - 生成掌握度报告
+
+**描述**: 生成学生知识点掌握度报告
+
+**路径参数**:
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| student_id | string | 学生ID |
+
+**查询参数**:
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| course_id | string | 否 | 课程ID |
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "student_id": "uuid",
+    "course_id": "uuid",
+    "generated_at": "datetime",
+    "summary": "string",
+    "details": [],
+    "recommendations": []
+  }
+}
+```
+
+---
+
+## 通用响应格式
+
+### 成功响应
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {},
+  "timestamp": "2024-01-01T00:00:00Z"
+}
+```
+
+### 错误响应
+```json
+{
+  "code": 400,
+  "message": "错误描述",
+  "error": "详细错误信息",
+  "timestamp": "2024-01-01T00:00:00Z"
+}
+```
+
+### 分页响应
+```json
+{
+  "code": 200,
+  "message": "查询成功",
+  "data": {
+    "items": [],
+    "total": 0,
+    "page_num": 1,
+    "size": 10,
+    "total_pages": 0
+  },
+  "timestamp": "2024-01-01T00:00:00Z"
+}
+```
+
+---
+
+## 错误码说明
+
+| 错误码 | 描述 |
+|--------|------|
+| 200 | 成功 |
+| 201 | 创建成功 |
+| 400 | 请求参数错误 |
+| 401 | 未授权，需要登录 |
+| 403 | 权限不足 |
+| 404 | 资源不存在 |
+| 409 | 资源冲突 |
+| 422 | 数据验证失败 |
+| 500 | 服务器内部错误 |
+
+---
+
+## 认证说明
+
+### JWT Token 认证
+
+1. 通过 `/api/v1/auth/login` 接口获取 access_token
+2. 在请求头中添加 Authorization: `Bearer {access_token}`
+3. Token 过期后使用 `/api/v1/auth/refresh` 刷新
+
+### Token 有效期
+
+- access_token: 1小时
+- refresh_token: 7天
+
+---
+
+## 版本信息
+
+- API版本: v1
+- 文档更新时间: 2026-03-11
+- 服务基础URL: http://localhost:8000

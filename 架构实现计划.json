@@ -1,0 +1,680 @@
+{
+  "backend_build_plan": {
+    "project_name": "可嵌入式跨课程 AI_Agent 通用架构平台",
+    "total_services": 36,
+    "phases": [
+      {
+        "phase": 1,
+        "name": "基础支撑与数据底座阶段",
+        "duration": "4 周",
+        "focus": "搭建平台核心基础设施，实现数据采集与存储",
+        "services": [
+          {
+            "service_code": "BASE-REGISTRY",
+            "service_name": "微服务注册与发现服务",
+            "priority": "P0",
+            "tech_stack": "Consul + python-consul",
+            "estimated_days": 3,
+            "dependencies": [],
+            "deliverable": "Consul 集群搭建完成，服务可注册发现"
+          },
+          {
+            "service_code": "BASE-CONFIG",
+            "service_name": "统一配置中心服务",
+            "priority": "P0",
+            "tech_stack": "etcd + python-etcd + FastAPI",
+            "estimated_days": 3,
+            "dependencies": ["BASE-REGISTRY"],
+            "deliverable": "配置中心 API 可用，支持动态配置更新"
+          },
+          {
+            "service_code": "BASE-AUTH",
+            "service_name": "统一身份认证与授权服务",
+            "priority": "P0",
+            "tech_stack": "FastAPI + python-jose + passlib + Redis",
+            "estimated_days": 5,
+            "dependencies": ["BASE-CONFIG"],
+            "deliverable": "JWT 认证、RBAC 权限管理、登录接口"
+          },
+          {
+            "service_code": "BASE-SCHEDULE",
+            "service_name": "统一任务调度服务",
+            "priority": "P0",
+            "tech_stack": "Celery + RabbitMQ + Flower",
+            "estimated_days": 4,
+            "dependencies": ["BASE-CONFIG"],
+            "deliverable": "定时任务、异步任务调度系统"
+          },
+          {
+            "service_code": "BASE-ASYNC",
+            "service_name": "异步任务处理与回调服务",
+            "priority": "P0",
+            "tech_stack": "Celery + RabbitMQ + FastAPI",
+            "estimated_days": 3,
+            "dependencies": ["BASE-SCHEDULE"],
+            "deliverable": "任务队列、死信处理、回调机制"
+          },
+          {
+            "service_code": "DATA-COLLECT",
+            "service_name": "多源数据标准化采集服务",
+            "priority": "P0",
+            "tech_stack": "FastAPI + Pydantic + Kafka-python",
+            "estimated_days": 5,
+            "dependencies": ["BASE-AUTH"],
+            "deliverable": "统一采集接口/api/v1/collect，数据写入 Kafka"
+          },
+          {
+            "service_code": "DATA-WAREHOUSE",
+            "service_name": "统一学习数据仓库服务",
+            "priority": "P0",
+            "tech_stack": "MinIO + Spark SQL + Parquet",
+            "estimated_days": 5,
+            "dependencies": ["DATA-COLLECT"],
+            "deliverable": "数据湖搭建完成，MinIO 路径设计，Spark SQL 可查询"
+          },
+          {
+            "service_code": "DATA-HOMEWORK",
+            "service_name": "多模态作业存储服务",
+            "priority": "P0",
+            "tech_stack": "MinIO + FastAPI + PostgreSQL",
+            "estimated_days": 4,
+            "dependencies": [],
+            "deliverable": "作业上传下载接口，MinIO 预签名 URL"
+          },
+          {
+            "service_code": "DATA-HOMEWORK-VERSION",
+            "service_name": "作业版本与溯源服务",
+            "priority": "P1",
+            "tech_stack": "FastAPI + SQLAlchemy + PostgreSQL",
+            "estimated_days": 4,
+            "dependencies": ["DATA-HOMEWORK"],
+            "deliverable": "作业版本记录与对比接口，溯源日志"
+          },
+          {
+            "service_code": "DATA-TIMESERIES",
+            "service_name": "时序数据存储与分析服务",
+            "priority": "P1",
+            "tech_stack": "PostgreSQL 15 + TimescaleDB 2.12 + psycopg2-binary",
+            "estimated_days": 5,
+            "dependencies": ["DATA-COLLECT", "Kafka"],
+            "deliverable": "TimescaleDB 集群搭建完成，超表创建，基础时序查询接口",
+            "hypertables": [
+              "learning_behavior (time, student_id, course_id, watch_duration, attention_score)",
+              "system_metrics (time, service_name, cpu_usage, memory_usage, qps)",
+              "knowledge_trend (time, student_id, kp_id, mastery_level)"
+            ]
+          },
+          {
+            "service_code": "KNOWLEDGE-MODEL",
+            "service_name": "知识标准化建模服务",
+            "priority": "P1",
+            "tech_stack": "FastAPI + Pydantic + SQLAlchemy + PostgreSQL",
+            "estimated_days": 4,
+            "dependencies": ["BASE-AUTH"],
+            "deliverable": "知识点 Schema 定义，元数据管理接口"
+          }
+        ],
+        "phase_summary": {
+          "service_count": 11,
+          "total_days": 40,
+          "critical_path": ["BASE-REGISTRY", "BASE-AUTH", "DATA-COLLECT", "DATA-WAREHOUSE", "DATA-TIMESERIES"],
+          "completion_criteria": "能够接收前端埋点数据，存入 MinIO 和 TimescaleDB，数据湖可查询，任务调度系统可用"
+        }
+      },
+      {
+        "phase": 2,
+        "name": "智能原子能力构建阶段",
+        "duration": "6 周",
+        "focus": "实现 AI 核心能力，构建知识图谱与检索链",
+        "services": [
+          {
+            "service_code": "KNOWLEDGE-GRAPH",
+            "service_name": "知识图谱构建与存储服务",
+            "priority": "P0",
+            "tech_stack": "Neo4j + FastAPI + neo4j-python-driver",
+            "estimated_days": 7,
+            "dependencies": ["KNOWLEDGE-MODEL"],
+            "deliverable": "知识图谱查询接口"
+          },
+          {
+            "service_code": "KNOWLEDGE-SEARCH-OFFLINE",
+            "service_name": "多模态知识检索服务 - 离线部分",
+            "priority": "P0",
+            "tech_stack": "FAISS + sentence-transformers + LangChain",
+            "estimated_days": 10,
+            "dependencies": ["KNOWLEDGE-MODEL", "DATA-WAREHOUSE"],
+            "sub_components": [
+              "智能分块引擎（滑动窗口/语义分割）",
+              "向量化嵌入服务（sentence-transformers）",
+              "量化与压缩引擎（FAISS IVF/PQ）"
+            ],
+            "deliverable": "离线索引构建流水线，FAISS 索引文件"
+          },
+          {
+            "service_code": "KNOWLEDGE-SEARCH-ONLINE",
+            "service_name": "多模态知识检索服务 - 在线部分",
+            "priority": "P0",
+            "tech_stack": "FastAPI + FAISS + Elasticsearch + gRPC",
+            "estimated_days": 12,
+            "dependencies": ["KNOWLEDGE-SEARCH-OFFLINE"],
+            "sub_components": [
+              "查询改写服务（Kimi API）",
+              "查询路由与意图识别",
+              "关键词提取（jieba/HanLP）",
+              "多路检索执行（FAISS + Elasticsearch）",
+              "重排序服务（交叉编码器）",
+              "上下文修剪与压缩"
+            ],
+            "deliverable": "多模态检索 API，支持 gRPC/HTTP/WebSocket，集成 Kimi 查询改写"
+          },
+          {
+            "service_code": "INT-PARSE",
+            "service_name": "多模态内容解析服务",
+            "priority": "P0",
+            "tech_stack": "spaCy + tree-sitter + PaddleOCR + FastAPI",
+            "estimated_days": 7,
+            "dependencies": ["BASE-AUTH"],
+            "deliverable": "文本/代码/图像解析接口"
+          },
+          {
+            "service_code": "INT-ERROR",
+            "service_name": "精细化错误定位与分析服务",
+            "priority": "P1",
+            "tech_stack": "PyTorch + FastAPI + ONNX",
+            "estimated_days": 8,
+            "dependencies": ["INT-PARSE"],
+            "deliverable": "错误定位模型 API"
+          },
+          {
+            "service_code": "DATA-CLEAN",
+            "service_name": "学习数据清洗与归一化服务",
+            "priority": "P1",
+            "tech_stack": "PySpark + Great Expectations",
+            "estimated_days": 5,
+            "dependencies": ["DATA-WAREHOUSE"],
+            "deliverable": "数据清洗流水线"
+          },
+          {
+            "service_code": "DATA-PORTRAIT",
+            "service_name": "学生数据标签与画像服务",
+            "priority": "P1",
+            "tech_stack": "FastAPI + pandas + Feast + PostgreSQL + TimescaleDB",
+            "estimated_days": 6,
+            "dependencies": ["DATA-WAREHOUSE", "DATA-CLEAN", "DATA-TIMESERIES"],
+            "deliverable": "学生画像生成接口（包含学习规律分析）"
+          },
+          {
+            "service_code": "BASE-FLOW",
+            "service_name": "高并发流量管控服务",
+            "priority": "P1",
+            "tech_stack": "slowapi + aioredis + pybreaker",
+            "estimated_days": 3,
+            "dependencies": ["BASE-AUTH"],
+            "deliverable": "限流、熔断机制"
+          },
+          {
+            "service_code": "DATA-TIMESERIES-QUERY",
+            "service_name": "时序数据高级查询服务",
+            "priority": "P2",
+            "tech_stack": "FastAPI + psycopg2-binary + pandas + TimescaleDB",
+            "estimated_days": 4,
+            "dependencies": ["DATA-TIMESERIES"],
+            "deliverable": "时序数据聚合查询接口（降采样、滑动窗口、趋势分析）"
+          }
+        ],
+        "phase_summary": {
+          "service_count": 9,
+          "total_days": 62,
+          "critical_path": ["KNOWLEDGE-MODEL", "KNOWLEDGE-GRAPH", "KNOWLEDGE-SEARCH-OFFLINE", "KNOWLEDGE-SEARCH-ONLINE"],
+          "completion_criteria": "检索服务可用，知识图谱可查询，学生画像可生成，时序数据可分析"
+        }
+      },
+      {
+        "phase": 3,
+        "name": "核心业务逻辑阶段",
+        "duration": "5 周",
+        "focus": "实现教学核心功能，组合原子能力",
+        "services": [
+          {
+            "service_code": "INT-EVALUATE",
+            "service_name": "知识点掌握度评估服务",
+            "priority": "P0",
+            "tech_stack": "FastAPI + py-irt + PostgreSQL + TimescaleDB",
+            "estimated_days": 5,
+            "dependencies": ["DATA-PORTRAIT", "KNOWLEDGE-SEARCH-ONLINE", "DATA-TIMESERIES"],
+            "deliverable": "掌握度量化评估接口（结合历史趋势）"
+          },
+          {
+            "service_code": "INT-ANNOTATION",
+            "service_name": "智能评语与批注生成服务",
+            "priority": "P0",
+            "tech_stack": "LangChain + Kimi API + FastAPI",
+            "estimated_days": 6,
+            "dependencies": ["INT-ERROR"],
+            "deliverable": "批注生成接口，集成 Kimi 评语生成"
+          },
+          {
+            "service_code": "INT-CHAT",
+            "service_name": "多轮对话智能答疑服务",
+            "priority": "P0",
+            "tech_stack": "LangChain + FAISS + Neo4j + Redis + FastAPI + TimescaleDB + Kimi API",
+            "estimated_days": 8,
+            "dependencies": ["KNOWLEDGE-SEARCH-ONLINE", "KNOWLEDGE-GRAPH", "DATA-TIMESERIES"],
+            "deliverable": "多轮答疑机器人 API（包含学生历史行为感知），Kimi 为核心对话引擎"
+          },
+          {
+            "service_code": "DATA-HOMEWORK-ANNOTATION",
+            "service_name": "作业批注挂载与展示服务",
+            "priority": "P1",
+            "tech_stack": "FastAPI + PostgreSQL JSONB",
+            "estimated_days": 4,
+            "dependencies": ["DATA-HOMEWORK", "DATA-HOMEWORK-VERSION", "INT-ANNOTATION"],
+            "deliverable": "批注挂载接口"
+          },
+          {
+            "service_code": "KNOWLEDGE-VERSION",
+            "service_name": "知识版本与更新服务",
+            "priority": "P2",
+            "tech_stack": "FastAPI + SQLAlchemy + Alembic",
+            "estimated_days": 4,
+            "dependencies": ["KNOWLEDGE-MODEL"],
+            "deliverable": "知识版本管理接口"
+          },
+          {
+            "service_code": "VISUAL-DISPLAY",
+            "service_name": "通用可视化展示服务",
+            "priority": "P2",
+            "tech_stack": "FastAPI + ECharts + Vue + TimescaleDB",
+            "estimated_days": 5,
+            "dependencies": ["DATA-PORTRAIT", "DATA-TIMESERIES"],
+            "deliverable": "知识图谱/学情画像/趋势图表可视化组件"
+          }
+        ],
+        "phase_summary": {
+          "service_count": 6,
+          "total_days": 32,
+          "critical_path": ["INT-EVALUATE", "INT-ANNOTATION", "INT-CHAT"],
+          "completion_criteria": "作业可批改、可答疑、学情可评估（包含趋势分析）"
+        }
+      },
+      {
+        "phase": 4,
+        "name": "平台扩展与集成阶段",
+        "duration": "5 周",
+        "focus": "实现第三方对接、Agent 生命周期管理、可视化服务",
+        "services": [
+          {
+            "service_code": "INT-EXERCISE",
+            "service_name": "靶向性增量练习生成服务",
+            "priority": "P1",
+            "tech_stack": "LangChain + Kimi API + FastAPI + TimescaleDB",
+            "estimated_days": 6,
+            "dependencies": ["INT-EVALUATE", "DATA-TIMESERIES"],
+            "deliverable": "个性化练习生成接口（结合学习规律），Kimi 生成练习内容"
+          },
+          {
+            "service_code": "INT-WARNING",
+            "service_name": "学情风险预警服务",
+            "priority": "P1",
+            "tech_stack": "Flink Python API + Kafka + FastAPI + TimescaleDB",
+            "estimated_days": 7,
+            "dependencies": ["DATA-PORTRAIT", "INT-EVALUATE", "DATA-TIMESERIES"],
+            "deliverable": "实时预警系统（基于时序数据异常检测）"
+          },
+          {
+            "service_code": "ADAPT-GATEWAY",
+            "service_name": "第三方平台适配网关服务",
+            "priority": "P1",
+            "tech_stack": "FastAPI + httpx + pybreaker",
+            "estimated_days": 5,
+            "dependencies": ["BASE-AUTH"],
+            "deliverable": "超星/钉钉 API 适配层"
+          },
+          {
+            "service_code": "ADAPT-COMPONENT",
+            "service_name": "嵌入式组件封装与分发服务",
+            "priority": "P2",
+            "tech_stack": "FastAPI + Webpack + Docker",
+            "estimated_days": 5,
+            "dependencies": ["ADAPT-GATEWAY"],
+            "deliverable": "H5/小程序组件封装与分发接口"
+          },
+          {
+            "service_code": "ADAPT-SYNC",
+            "service_name": "跨平台数据同步服务",
+            "priority": "P2",
+            "tech_stack": "Celery + Debezium Python + Kafka + TimescaleDB",
+            "estimated_days": 5,
+            "dependencies": ["ADAPT-GATEWAY", "DATA-TIMESERIES"],
+            "deliverable": "数据双向同步任务（含时序数据）"
+          },
+          {
+            "service_code": "AGENT-TEMPLATE",
+            "service_name": "AI Agent 模板管理服务",
+            "priority": "P2",
+            "tech_stack": "FastAPI + PostgreSQL JSONB",
+            "estimated_days": 4,
+            "dependencies": ["KNOWLEDGE-SEARCH-ONLINE", "INT-CHAT"],
+            "deliverable": "Agent 模板管理接口"
+          },
+          {
+            "service_code": "VISUAL-AGENT",
+            "service_name": "可视化 AI Agent 构建服务",
+            "priority": "P2",
+            "tech_stack": "FastAPI + Vue3 + TypeScript",
+            "estimated_days": 6,
+            "dependencies": ["AGENT-TEMPLATE"],
+            "deliverable": "低代码 Agent 可视化构建界面"
+          },
+          {
+            "service_code": "AGENT-DEPLOY",
+            "service_name": "AI Agent 部署与实例化服务",
+            "priority": "P2",
+            "tech_stack": "Kubernetes Python client + Helm + FastAPI",
+            "estimated_days": 6,
+            "dependencies": ["AGENT-TEMPLATE", "VISUAL-AGENT"],
+            "deliverable": "Agent 一键部署功能"
+          },
+          {
+            "service_code": "AGENT-DESTROY",
+            "service_name": "AI Agent 注销与资源回收服务",
+            "priority": "P2",
+            "tech_stack": "Kubernetes Python client + Celery + MinIO SDK",
+            "estimated_days": 3,
+            "dependencies": ["AGENT-DEPLOY"],
+            "deliverable": "Agent 资源回收机制"
+          },
+          {
+            "service_code": "VISUAL-ANALYSIS",
+            "service_name": "教学数据分析与报表服务",
+            "priority": "P2",
+            "tech_stack": "FastAPI + pandas + ReportLab + TimescaleDB",
+            "estimated_days": 5,
+            "dependencies": ["DATA-PORTRAIT", "DATA-TIMESERIES"],
+            "deliverable": "报表生成 API（含趋势图表）"
+          },
+          {
+            "service_code": "BASE-ORCHESTRATION",
+            "service_name": "服务间协同编排服务",
+            "priority": "P3",
+            "tech_stack": "Apache Airflow + PostgreSQL",
+            "estimated_days": 5,
+            "dependencies": ["BASE-SCHEDULE"],
+            "deliverable": "业务流程编排"
+          }
+        ],
+        "phase_summary": {
+          "service_count": 11,
+          "total_days": 57,
+          "critical_path": ["INT-WARNING", "AGENT-TEMPLATE", "VISUAL-AGENT", "AGENT-DEPLOY"],
+          "completion_criteria": "完整平台功能，可对接第三方，可创建课程 Agent，支持时序数据分析与预警"
+        }
+      }
+    ],
+    "development_timeline": {
+      "total_weeks": 20,
+      "phase1_start": "第 1 周",
+      "phase1_end": "第 4 周",
+      "phase2_start": "第 5 周",
+      "phase2_end": "第 10 周",
+      "phase3_start": "第 11 周",
+      "phase3_end": "第 15 周",
+      "phase4_start": "第 16 周",
+      "phase4_end": "第 20 周"
+    },
+    "team_allocation": {
+      "phase1": {
+        "backend_engineers": 3,
+        "data_engineers": 2,
+        "devops": 1,
+        "note": "数据工程师负责 TimescaleDB 搭建"
+      },
+      "phase2": {
+        "backend_engineers": 2,
+        "ai_engineers": 3,
+        "data_engineers": 2,
+        "devops": 1,
+        "note": "数据工程师负责时序数据分析接口"
+      },
+      "phase3": {
+        "backend_engineers": 3,
+        "ai_engineers": 2,
+        "data_engineers": 1,
+        "devops": 1,
+        "note": "AI 工程师集成 Kimi API 到对话和批注"
+      },
+      "phase4": {
+        "backend_engineers": 2,
+        "ai_engineers": 1,
+        "devops": 2,
+        "platform_engineers": 2,
+        "note": "数据工程师负责预警系统"
+      }
+    },
+    "llm_configuration": {
+      "primary_model": "Kimi API",
+      "api_endpoint": "https://api.moonshot.cn/v1",
+      "model_name": "moonshot-v1-128k",
+      "api_key_source": "环境变量 KIMI_API_KEY",
+      "usage_scenarios": [
+        {
+          "service": "INT-ANNOTATION",
+          "purpose": "生成智能评语和批注",
+          "prompt_template": "基于以下错误信息，生成针对学生的鼓励性、指导性评语：{error_context}"
+        },
+        {
+          "service": "INT-CHAT",
+          "purpose": "多轮对话答疑",
+          "context_injection": ["知识图谱检索结果", "学生历史行为", "时序趋势"],
+          "system_prompt": "你是一个智能教学助手，基于课程知识图谱和学生历史学习数据，回答学生问题。"
+        },
+        {
+          "service": "INT-EXERCISE",
+          "purpose": "生成个性化练习题",
+          "prompt_template": "根据学生薄弱知识点{weak_points}，生成难度{difficulty}的练习题，包含答案和解析。"
+        },
+        {
+          "service": "KNOWLEDGE-SEARCH-ONLINE",
+          "purpose": "查询改写",
+          "prompt_template": "将用户查询'{query}'扩展为更详细的搜索查询，包含同义词和相关概念。"
+        }
+      ],
+      "fallback_strategy": "缓存常见问答，网络超时重试3次，降级返回模板回答",
+      "cost_control": {
+        "cache_enabled": true,
+        "cache_ttl": 3600,
+        "rate_limit": "1000请求/分钟",
+        "batch_processing": true
+      }
+    },
+    "storage_configuration": {
+      "object_storage": {
+        "primary": "MinIO",
+        "deployment": "分布式集群（4节点）",
+        "buckets": ["edu-homework", "edu-courseware", "edu-lake", "edu-backup"],
+        "access": "预签名URL（有效期1小时）"
+      },
+      "relational_database": {
+        "primary": "PostgreSQL 15",
+        "deployment": "Patroni高可用集群（3节点）",
+        "databases": ["edu_auth", "edu_knowledge", "edu_homework", "edu_portrait"]
+      },
+      "timeseries_database": {
+        "primary": "TimescaleDB 2.12",
+        "deployment": "PostgreSQL集群扩展",
+        "hypertables": {
+          "learning_behavior": "按时间分区，30天原始，1年降采样",
+          "system_metrics": "按时间分区，7天原始，30天聚合",
+          "knowledge_trend": "按时间分区，90天原始，永久日聚合",
+          "warning_events": "按时间分区，90天保留",
+          "homework_metrics": "按时间分区，1年保留"
+        }
+      },
+      "vector_database": {
+        "primary": "FAISS",
+        "index_type": "IVF_PQ",
+        "storage": "内存索引 + MinIO备份"
+      },
+      "graph_database": {
+        "primary": "Neo4j 5.14",
+        "deployment": "因果集群（3核心服务器）"
+      },
+      "search_engine": {
+        "primary": "Elasticsearch 8.11",
+        "deployment": "3节点集群"
+      },
+      "cache": {
+        "primary": "Redis 7.0",
+        "deployment": "Redis Sentinel（3节点）",
+        "use_cases": ["会话存储", "JWT黑名单", "API缓存", "FAQ缓存"]
+      }
+    },
+    "risk_management": [
+      {
+        "phase": 1,
+        "risk": "Kafka/Consul 集群搭建不稳定",
+        "mitigation": "使用 Docker Compose 本地验证，再上 K8s"
+      },
+      {
+        "phase": 1,
+        "risk": "TimescaleDB 集群配置复杂",
+        "mitigation": "初期使用单节点 + 流复制备份，后期再扩集群"
+      },
+      {
+        "phase": 2,
+        "risk": "FAISS 索引构建耗时过长",
+        "mitigation": "提前准备测试数据，分片构建，GPU 加速"
+      },
+      {
+        "phase": 2,
+        "risk": "检索延迟超过 100ms 目标",
+        "mitigation": "预量化索引、缓存热点查询、异步处理"
+      },
+      {
+        "phase": 2,
+        "risk": "时序数据写入吞吐不足",
+        "mitigation": "使用 TimescaleDB 批量插入，调整压缩策略"
+      },
+      {
+        "phase": 2,
+        "risk": "知识图谱构建复杂度高",
+        "mitigation": "先实现基础 CRUD，迭代添加关联挖掘功能"
+      },
+      {
+        "phase": 3,
+        "risk": "Kimi API 调用成本高、延迟大",
+        "mitigation": "本地缓存常见问题，使用流式输出，设置超时重试"
+      },
+      {
+        "phase": 3,
+        "risk": "Kimi API 配额限制",
+        "mitigation": "配置备用模型（如通义千问），实现降级策略"
+      },
+      {
+        "phase": 4,
+        "risk": "K8s 部署配置复杂",
+        "mitigation": "使用 Helm Charts 模板化，逐步完善"
+      }
+    ],
+    "milestones": [
+      {
+        "milestone": "M1: 基础平台可用",
+        "phase": 1,
+        "criteria": "采集接口接收数据，数据入湖和入时序库（TimescaleDB），基础认证可用，任务调度系统可用"
+      },
+      {
+        "milestone": "M2: 智能检索可用",
+        "phase": 2,
+        "criteria": "多模态检索服务完成，知识图谱可查询，时序数据可分析，Kimi 查询改写集成"
+      },
+      {
+        "milestone": "M3: 核心教学功能完成",
+        "phase": 3,
+        "criteria": "批改、答疑、学情评估可演示（含趋势分析），Kimi 评语生成可用"
+      },
+      {
+        "milestone": "M4: 平台完整可用",
+        "phase": 4,
+        "criteria": "对接第三方、Agent 可可视化创建、报表可用、实时预警可用，Kimi 练习生成集成"
+      }
+    ],
+    "architecture_layer_mapping": {
+      "BASE": ["BASE-REGISTRY", "BASE-CONFIG", "BASE-AUTH", "BASE-SCHEDULE", "BASE-ASYNC", "BASE-FLOW", "BASE-ORCHESTRATION"],
+      "KNOWLEDGE": ["KNOWLEDGE-MODEL", "KNOWLEDGE-GRAPH", "KNOWLEDGE-SEARCH-OFFLINE", "KNOWLEDGE-SEARCH-ONLINE", "KNOWLEDGE-VERSION"],
+      "DATA": ["DATA-COLLECT", "DATA-CLEAN", "DATA-WAREHOUSE", "DATA-PORTRAIT", "DATA-HOMEWORK", "DATA-HOMEWORK-VERSION", "DATA-HOMEWORK-ANNOTATION", "DATA-TIMESERIES", "DATA-TIMESERIES-QUERY"],
+      "INTELLIGENCE": ["INT-PARSE", "INT-ERROR", "INT-ANNOTATION", "INT-CHAT", "INT-EVALUATE", "INT-EXERCISE", "INT-WARNING"],
+      "ADAPT": ["ADAPT-GATEWAY", "ADAPT-COMPONENT", "ADAPT-SYNC"],
+      "AGENT": ["AGENT-TEMPLATE", "AGENT-DEPLOY", "AGENT-DESTROY"],
+      "VISUAL": ["VISUAL-AGENT", "VISUAL-ANALYSIS", "VISUAL-DISPLAY"]
+    },
+    "timescaledb_hypertables_detail": {
+      "learning_behavior": {
+        "description": "学生学习行为实时数据",
+        "tags": ["student_id", "course_id", "session_id", "device_type"],
+        "fields": ["watch_duration", "attention_score", "interaction_count", "scroll_depth"],
+        "chunk_time_interval": "1 day",
+        "compression": {
+          "after": "30 days",
+          "segment_by": ["student_id", "course_id"]
+        },
+        "retention": "1 year"
+      },
+      "system_metrics": {
+        "description": "系统性能监控",
+        "tags": ["service_name", "host", "pod", "region"],
+        "fields": ["cpu_usage", "memory_usage", "qps", "latency_p95", "error_rate"],
+        "chunk_time_interval": "6 hours",
+        "compression": {
+          "after": "7 days",
+          "segment_by": ["service_name"]
+        },
+        "retention": "30 days"
+      },
+      "knowledge_trend": {
+        "description": "知识点掌握度变化趋势",
+        "tags": ["student_id", "knowledge_point_id", "course_id"],
+        "fields": ["mastery_level", "confidence", "practice_count"],
+        "chunk_time_interval": "1 day",
+        "compression": {
+          "after": "90 days",
+          "segment_by": ["student_id", "knowledge_point_id"]
+        },
+        "continuous_aggregates": [
+          {
+            "name": "knowledge_trend_daily",
+            "interval": "1 day",
+            "retention": "permanent"
+          }
+        ]
+      },
+      "warning_events": {
+        "description": "预警事件记录",
+        "tags": ["student_id", "warning_type", "level", "course_id"],
+        "fields": ["risk_score", "trigger_value"],
+        "chunk_time_interval": "1 day",
+        "retention": "90 days"
+      },
+      "homework_metrics": {
+        "description": "作业完成情况时序",
+        "tags": ["student_id", "homework_id", "course_id"],
+        "fields": ["score", "time_spent", "attempts", "auto_score"],
+        "chunk_time_interval": "1 day",
+        "retention": "1 year"
+      }
+    },
+    "kimi_api_configuration": {
+      "endpoint": "https://api.moonshot.cn/v1/chat/completions",
+      "model": "moonshot-v1-128k",
+      "max_tokens": 4096,
+      "temperature": 0.7,
+      "timeout": 30,
+      "retry_count": 3,
+      "batch_size": 10,
+      "rate_limit": "1000 RPM",
+      "cost_estimation": {
+        "per_1k_tokens": "$0.012",
+        "monthly_estimate": "$200-500（按使用量）"
+      }
+    }
+  }
+}

@@ -1,0 +1,953 @@
+{
+  "architecture_name": "可嵌入式跨课程AI_Agent通用架构平台",
+  "design_philosophy": "一切皆服务（XaaS）",
+  "core_principles": [
+    "功能解耦",
+    "原子化复用",
+    "标准化接口",
+    "可嵌入式扩展",
+    "跨课程兼容"
+  ],
+  "architecture_layers": [
+    {
+      "layer_code": "BASE",
+      "layer_name": "基础支撑层",
+      "layer_desc": "平台运行的通用技术底座，无业务属性，为所有上层服务提供标准化支撑",
+      "services": [
+        {
+          "service_code": "BASE-REGISTRY",
+          "service_name": "微服务注册与发现服务",
+          "service_desc": "实现所有服务的自动化注册、动态发现、健康检测与负载均衡",
+          "tech_stack": {
+            "primary": "Consul",
+            "client": "python-consul 1.2",
+            "deployment": "Consul集群（3节点）",
+            "health_check": "HTTP健康检查（/health端点）"
+          },
+          "core_capabilities": [
+            "服务注册/注销/版本管理",
+            "服务地址动态发现",
+            "服务健康状态检测（心跳机制，5s间隔）",
+            "基于权重的负载均衡（支持轮询/随机）",
+            "服务上下线通知（Webhook或消息广播）"
+          ],
+          "reuse_value": "解除服务间硬编码依赖，可复用于所有模块及新增服务的无缝接入"
+        },
+        {
+          "service_code": "BASE-CONFIG",
+          "service_name": "统一配置中心服务",
+          "service_desc": "集中管理所有服务的配置项，支持动态推送与多环境隔离",
+          "tech_stack": {
+            "primary": "etcd",
+            "client": "python-etcd 0.4.5",
+            "storage": "etcd集群 + PostgreSQL备份",
+            "api_framework": "FastAPI 0.104"
+          },
+          "core_capabilities": [
+            "多环境配置隔离（开发/测试/生产）",
+            "配置动态推送与热更新（监听配置变更）",
+            "配置版本管理与回滚",
+            "课程/平台专属配置分组",
+            "配置变更审计日志"
+          ],
+          "reuse_value": "配置与代码解耦，可复用于所有课程Agent和对接平台，仅需配置专属参数"
+        },
+        {
+          "service_code": "BASE-AUTH",
+          "service_name": "统一身份认证与授权服务",
+          "service_desc": "提供标准化的身份验证、权限管理与跨平台单点登录",
+          "tech_stack": {
+            "primary": "FastAPI",
+            "auth": "python-jose + passlib",
+            "protocol": "OAuth2.0 + JWT",
+            "token_format": "JWT (RS256加密)",
+            "cache": "Redis 7.0",
+            "social_auth": "python-social-auth 0.3"
+          },
+          "core_capabilities": [
+            "多角色RBAC权限管理（学生/教师/管理员）",
+            "令牌签发/验证与单点登录（SSO，支持OAuth2授权码模式）",
+            "第三方教学平台身份对接（OAuth2/CAS/钉钉扫码）",
+            "接口细粒度访问控制（依赖注入鉴权）",
+            "操作权限审计"
+          ],
+          "reuse_value": "身份权限逻辑与业务解耦，可复用于所有模块及第三方平台的统一身份管理"
+        },
+        {
+          "service_code": "BASE-FLOW",
+          "service_name": "高并发流量管控服务",
+          "service_desc": "实现接口限流、熔断、降级，满足高并发访问性能要求",
+          "tech_stack": {
+            "primary": "slowapi + aioredis",
+            "rate_limit": "slowapi (基于Redis)",
+            "circuit_breaker": "pybreaker 1.0",
+            "monitoring": "Prometheus + Grafana"
+          },
+          "core_capabilities": [
+            "多维度限流（QPS限流/并发限流，支持用户/服务/课程级）",
+            "服务熔断与降级策略（错误率阈值/慢调用比例）",
+            "热点接口缓存（Redis缓存）",
+            "500用户并发流量适配（压测验证通过）",
+            "流量监控与告警"
+          ],
+          "reuse_value": "流量管控与业务解耦，可复用于所有API接口，适配不同课程流量特征"
+        },
+        {
+          "service_code": "BASE-SCHEDULE",
+          "service_name": "统一任务调度服务",
+          "service_desc": "标准化管理异步、批量、高耗时教学任务的调度与执行",
+          "tech_stack": {
+            "primary": "Celery 5.3",
+            "broker": "RabbitMQ 3.12",
+            "scheduler": "Celery Beat",
+            "monitoring": "Flower",
+            "storage": "PostgreSQL 15"
+          },
+          "core_capabilities": [
+            "定时/触发式/批量任务调度",
+            "任务分片与分布式执行",
+            "任务优先级配置",
+            "任务暂停/终止/重试",
+            "任务执行日志记录"
+          ],
+          "reuse_value": "任务调度与业务解耦，可复用于作业批改、学情分析、Agent部署等所有场景"
+        },
+        {
+          "service_code": "BASE-ASYNC",
+          "service_name": "异步任务处理与回调服务",
+          "service_desc": "实现异步任务解耦处理，保证平台接口响应效率",
+          "tech_stack": {
+            "primary": "Celery",
+            "message_queue": "RabbitMQ 3.12",
+            "callback": "FastAPI + HTTPX",
+            "dead_letter": "RabbitMQ DLX机制"
+          },
+          "core_capabilities": [
+            "生产者-消费者任务队列管理",
+            "任务重试与死信队列处理",
+            "任务执行结果标准化回调",
+            "异步任务监控与溯源",
+            "多终端通知触发"
+          ],
+          "reuse_value": "同步服务与异步任务解耦，可复用于批量批改、练习生成等所有异步教学场景"
+        },
+        {
+          "service_code": "BASE-ORCHESTRATION",
+          "service_name": "服务间协同编排服务",
+          "service_desc": "可视化编排多个基础服务，实现教学业务流程的标准化组合",
+          "tech_stack": {
+            "primary": "Apache Airflow 2.7",
+            "executor": "CeleryExecutor",
+            "storage": "PostgreSQL 15",
+            "monitoring": "Airflow Web UI"
+          },
+          "core_capabilities": [
+            "服务流程可视化配置（DAG定义）",
+            "流程版本管理与执行监控",
+            "流程异常回滚与告警",
+            "跨服务数据流转标准化",
+            "流程模板复用"
+          ],
+          "reuse_value": "服务协同逻辑与代码解耦，可复用于所有教学业务流程的快速迭代"
+        }
+      ]
+    },
+    {
+      "layer_code": "KNOWLEDGE",
+      "layer_name": "知识管理层",
+      "layer_desc": "跨课程知识复用的核心底座，实现知识标准化、图谱化、可检索",
+      "services": [
+        {
+          "service_code": "KNOWLEDGE-MODEL",
+          "service_name": "知识标准化建模服务",
+          "service_desc": "统一多课程知识表示框架，实现知识元数据标准化",
+          "tech_stack": {
+            "primary": "FastAPI",
+            "validation": "Pydantic 2.0",
+            "orm": "SQLAlchemy 2.0",
+            "storage": "PostgreSQL 15",
+            "migration": "Alembic 1.12"
+          },
+          "core_capabilities": [
+            "知识图谱Schema定义",
+            "多课程知识点标签体系",
+            "知识属性规范制定",
+            "知识元数据校验入库",
+            "跨课程知识建模适配"
+          ],
+          "reuse_value": "统一知识表达形式，可复用于所有课程，实现跨课程知识关联与迁移"
+        },
+        {
+          "service_code": "KNOWLEDGE-GRAPH",
+          "service_name": "知识图谱构建与存储服务",
+          "service_desc": "实现课程知识图谱化存储与跨课程关联挖掘",
+          "tech_stack": {
+            "primary": "Neo4j 5.14",
+            "driver": "neo4j-python-driver 5.14",
+            "api": "FastAPI",
+            "deployment": "Neo4j因果集群（3核心服务器）"
+          },
+          "core_capabilities": [
+            "知识图谱增删改查与可视化编辑",
+            "知识点关联关系管理（前置/后置/从属）",
+            "跨课程知识关联挖掘",
+            "知识图谱版本迭代",
+            "图谱数据导出导入"
+          ],
+          "reuse_value": "知识存储与应用解耦，可复用于所有课程Agent的智能环节"
+        },
+        {
+          "service_code": "KNOWLEDGE-SEARCH",
+          "service_name": "多模态知识检索服务",
+          "service_desc": "支持多维度、多模态课程知识的高效检索，实现离线索引构建与在线检索链",
+          "tech_stack": {
+            "primary": "FastAPI",
+            "protocols": [
+              "HTTP/REST",
+              "gRPC",
+              "WebSocket"
+            ]
+          },
+          "sub_services": [
+            {
+              "name": "离线索引与优化服务",
+              "components": [
+                {
+                  "name": "智能分块引擎",
+                  "tech": "LangChain Text Splitter",
+                  "capabilities": [
+                    "语义分割",
+                    "重叠窗口"
+                  ]
+                },
+                {
+                  "name": "向量化嵌入服务",
+                  "tech": "sentence-transformers",
+                  "capabilities": [
+                    "文本向量化",
+                    "批量嵌入"
+                  ]
+                },
+                {
+                  "name": "量化与压缩引擎",
+                  "tech": "FAISS (PQ/IVF)",
+                  "capabilities": [
+                    "Product Quantization",
+                    "IVF索引构建"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "在线检索链服务",
+              "components": [
+                {
+                  "name": "查询改写服务",
+                  "tech": "LangChain + 通义千问",
+                  "capabilities": [
+                    "查询扩展",
+                    "多轮改写"
+                  ]
+                },
+                {
+                  "name": "查询路由与意图识别",
+                  "tech": "Python分类器",
+                  "capabilities": [
+                    "路由到语义/关键词检索"
+                  ]
+                },
+                {
+                  "name": "关键词提取服务",
+                  "tech": "jieba / HanLP",
+                  "capabilities": [
+                    "中文分词",
+                    "关键词抽取"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "多路检索执行服务",
+              "components": [
+                {
+                  "name": "语义检索执行器",
+                  "tech": "FAISS (内存级向量索引)",
+                  "capabilities": [
+                    "近似最近邻搜索"
+                  ]
+                },
+                {
+                  "name": "关键词检索执行器",
+                  "tech": "Elasticsearch 8.11",
+                  "capabilities": [
+                    "BM25检索",
+                    "精确匹配"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "重排序服务",
+              "tech": "交叉编码器",
+              "model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+              "capabilities": [
+                "语义相关性评分",
+                "Top-N重排序"
+              ]
+            },
+            {
+              "name": "上下文修剪与压缩服务",
+              "tech": "LangChain",
+              "capabilities": [
+                "冗余去除",
+                "token计数优化"
+              ]
+            }
+          ],
+          "data_flow": {
+            "离线流程": "原始文档 → 智能分块 → 向量化嵌入 → 量化压缩 → FAISS索引",
+            "在线流程": "用户查询 → 查询改写 → 意图识别 → 多路检索(FAISS+ES) → 重排序 → 上下文压缩 → LLM生成"
+          },
+          "core_capabilities": [
+            "语义检索（FAISS近似最近邻搜索）",
+            "关键词检索（BM25精确匹配）",
+            "多路检索融合",
+            "查询改写与扩展",
+            "重排序优化",
+            "上下文压缩"
+          ],
+          "reuse_value": "检索逻辑与业务解耦，可复用于答疑、批改、学情分析等所有场景"
+        },
+        {
+          "service_code": "KNOWLEDGE-VERSION",
+          "service_name": "知识版本与更新服务",
+          "service_desc": "管理课程知识的生命周期，支持增量更新与溯源",
+          "tech_stack": {
+            "primary": "FastAPI",
+            "storage": "PostgreSQL 15",
+            "versioning": "SQLAlchemy-Continuum",
+            "event_bus": "RabbitMQ"
+          },
+          "core_capabilities": [
+            "知识版本管理与回滚",
+            "知识批量/增量更新",
+            "知识变更溯源与通知",
+            "课程知识更新频率适配",
+            "知识更新冲突处理"
+          ],
+          "reuse_value": "知识生命周期与应用解耦，可复用于所有课程的知识迭代管理"
+        }
+      ]
+    },
+    {
+      "layer_code": "DATA",
+      "layer_name": "数据融合层",
+      "layer_desc": "实现跨课程、多平台学习数据的统一采集、清洗、存储、时序分析与画像构建",
+      "services": [
+        {
+          "service_code": "DATA-COLLECT",
+          "service_name": "多源数据标准化采集服务",
+          "service_desc": "标准化采集多平台、多模态学习数据",
+          "tech_stack": {
+            "primary": "FastAPI",
+            "validation": "Pydantic 2.0",
+            "message_queue": "Kafka-python",
+            "monitoring": "Prometheus"
+          },
+          "core_capabilities": [
+            "第三方教学平台API适配",
+            "多模态作业数据结构化解析",
+            "学习行为数据实时采集",
+            "数据采集任务配置",
+            "采集异常重试与告警"
+          ],
+          "reuse_value": "数据采集与应用解耦，可复用于所有对接平台和课程"
+        },
+        {
+          "service_code": "DATA-CLEAN",
+          "service_name": "学习数据清洗与归一化服务",
+          "service_desc": "将异构学习数据转换为平台统一数据模型",
+          "tech_stack": {
+            "primary": "PySpark 3.4",
+            "deployment": "Spark on Kubernetes",
+            "data_quality": "Great Expectations"
+          },
+          "core_capabilities": [
+            "数据去重/去噪/补全",
+            "异构数据格式归一化",
+            "数据质量校验与异常标记",
+            "过程性数据结构化存储",
+            "数据清洗规则配置"
+          ],
+          "reuse_value": "解除数据异构性影响，可复用于所有多源数据处理场景"
+        },
+        {
+          "service_code": "DATA-WAREHOUSE",
+          "service_name": "统一学习数据仓库服务",
+          "service_desc": "跨课程学习数据的统一存储与多维度建模",
+          "tech_stack": {
+            "storage": "MinIO",
+            "query_engine": "Spark SQL",
+            "format": "Parquet",
+            "partition": "按时间+课程分区"
+          },
+          "core_capabilities": [
+            "多维度数据建模（学生/课程/知识点/时间）",
+            "数据仓库/数据湖存储架构",
+            "高效数仓查询与数据集市生成",
+            "数据分区与性能优化",
+            "数据备份与恢复"
+          ],
+          "reuse_value": "数据存储与挖掘解耦，可复用于所有学情分析场景"
+        },
+        {
+          "service_code": "DATA-TIMESERIES",
+          "service_name": "时序数据存储与分析服务",
+          "service_desc": "存储和分析学习行为时序数据，支持实时趋势查询和降采样",
+          "tech_stack": {
+            "primary": "PostgreSQL 15 + TimescaleDB 2.12",
+            "client": "psycopg2-binary",
+            "collector": "TimescaleDB compression",
+            "deployment": "TimescaleDB集群（3节点）",
+            "monitoring": "Grafana"
+          },
+          "core_capabilities": [
+            "高吞吐写入（每秒百万数据点）",
+            "实时时序查询（毫秒级）",
+            "自动降采样与数据保留策略",
+            "连续查询预计算",
+            "Grafana可视化集成"
+          ],
+          "reuse_value": "为所有需要时序分析的模块提供统一的数据服务",
+          "hypertables": [
+            {
+              "name": "learning_behavior",
+              "tags": [
+                "student_id",
+                "course_id",
+                "session_id",
+                "device_type"
+              ],
+              "fields": [
+                "watch_duration",
+                "attention_score",
+                "interaction_count"
+              ],
+              "retention": "30d原始, 1y降采样"
+            },
+            {
+              "name": "system_metrics",
+              "tags": [
+                "service_name",
+                "host"
+              ],
+              "fields": [
+                "cpu_usage",
+                "memory_usage",
+                "qps",
+                "latency_p95"
+              ],
+              "retention": "7d原始, 30d聚合"
+            },
+            {
+              "name": "knowledge_trend",
+              "tags": [
+                "student_id",
+                "knowledge_point_id"
+              ],
+              "fields": [
+                "mastery_level",
+                "confidence"
+              ],
+              "retention": "90d原始, 永久日聚合"
+            },
+            {
+              "name": "warning_events",
+              "tags": [
+                "student_id",
+                "warning_type",
+                "level"
+              ],
+              "fields": [
+                "risk_score"
+              ],
+              "retention": "90d"
+            }
+          ]
+        },
+        {
+          "service_code": "DATA-TIMESERIES-QUERY",
+          "service_name": "时序数据高级查询服务",
+          "service_desc": "提供时序数据聚合、趋势分析、异常检测等高级查询能力",
+          "tech_stack": {
+            "primary": "FastAPI",
+            "client": "psycopg2-binary",
+            "analysis": "pandas + numpy"
+          },
+          "core_capabilities": [
+            "时间范围聚合查询（按小时/天/周）",
+            "滑动窗口分析",
+            "趋势线计算",
+            "同比/环比分析",
+            "简单异常检测"
+          ],
+          "reuse_value": "为学情分析、预警、报表提供时序分析能力"
+        },
+        {
+          "service_code": "DATA-PORTRAIT",
+          "service_name": "学生数据标签与画像服务",
+          "service_desc": "生成学生标准化标签与全景式能力画像，包含学习规律分析",
+          "tech_stack": {
+            "primary": "FastAPI",
+            "data_analysis": "pandas + numpy",
+            "feature_store": "Feast",
+            "storage": "PostgreSQL + Redis",
+            "timeseries": "TimescaleDB"
+          },
+          "core_capabilities": [
+            "多维度标签体系构建",
+            "标签动态更新与量化评估",
+            "个体/群体画像生成",
+            "跨课程画像融合",
+            "学习规律分析（最佳学习时段、专注度模式）",
+            "画像数据可视化输出"
+          ],
+          "reuse_value": "画像构建与应用解耦，可复用于学情预警、个性化练习等所有场景"
+        },
+        {
+          "service_code": "DATA-HOMEWORK",
+          "service_name": "多模态作业存储服务",
+          "service_desc": "标准化存储多格式作业文件，保证数据安全与可访问",
+          "tech_stack": {
+            "storage": "MinIO",
+            "access": "MinIO预签名URL",
+            "security": "KMS加密",
+            "metadata": "PostgreSQL"
+          },
+          "core_capabilities": [
+            "多格式作业存储（文本/代码/图像/PDF）",
+            "文件分块存储与断点续传",
+            "文件哈希校验与防篡改",
+            "高效作业文件检索",
+            "存储资源动态分配"
+          ],
+          "reuse_value": "作业存储与业务解耦，可复用于所有课程的多模态作业管理"
+        },
+        {
+          "service_code": "DATA-HOMEWORK-VERSION",
+          "service_name": "作业版本与溯源服务",
+          "service_desc": "管理作业提交版本，实现全生命周期溯源",
+          "tech_stack": {
+            "primary": "FastAPI",
+            "storage": "PostgreSQL",
+            "versioning": "SQLAlchemy-Continuum",
+            "diff": "Python difflib"
+          },
+          "core_capabilities": [
+            "作业版本记录与对比",
+            "版本回滚与预览",
+            "作业全生命周期溯源日志",
+            "修改记录跟踪",
+            "溯源信息查询与导出"
+          ],
+          "reuse_value": "版本管理与批改解耦，可复用于所有课程的作业过程跟踪"
+        },
+        {
+          "service_code": "DATA-HOMEWORK-ANNOTATION",
+          "service_name": "作业批注挂载与展示服务",
+          "service_desc": "实现智能批注的精准挂载与一体化展示",
+          "tech_stack": {
+            "primary": "FastAPI",
+            "storage": "PostgreSQL JSONB",
+            "format": "W3C Web Annotation标准"
+          },
+          "core_capabilities": [
+            "批注位置精准挂载",
+            "批注与作业关联存储",
+            "作业+批注一体化预览/下载",
+            "多终端适配展示",
+            "批注格式标准化"
+          ],
+          "reuse_value": "批注挂载与生成解耦，可复用于所有课程的精细化批改场景"
+        }
+      ]
+    },
+    {
+      "layer_code": "INTELLIGENCE",
+      "layer_name": "智能核心层",
+      "layer_desc": "实现精细化智能教学的原子化能力，可组合复用",
+      "services": [
+        {
+          "service_code": "INT-PARSE",
+          "service_name": "多模态内容解析服务",
+          "service_desc": "结构化解析多类型教学内容，支撑后续智能处理",
+          "tech_stack": {
+            "nlp": "spaCy 3.7",
+            "code_parse": "tree-sitter",
+            "image_parse": "PaddleOCR",
+            "api": "FastAPI"
+          },
+          "core_capabilities": [
+            "文本语义分析与结构化提取",
+            "代码语法检测与错误定位",
+            "图像内容识别与结构化",
+            "多模态内容融合解析",
+            "解析结果标准化输出"
+          ],
+          "reuse_value": "内容解析与业务解耦，可复用于答疑、批改、练习生成等所有场景"
+        },
+        {
+          "service_code": "INT-ERROR",
+          "service_name": "精细化错误定位与分析服务",
+          "service_desc": "精准定位作业/练习错误点，分析错误原因并关联知识点",
+          "tech_stack": {
+            "ml_framework": "PyTorch 2.1",
+            "model_format": "ONNX",
+            "inference": "TorchServe",
+            "api": "FastAPI"
+          },
+          "core_capabilities": [
+            "错误点精准定位",
+            "错误类型分类",
+            "错误原因精细化分析",
+            "错误与知识点关联",
+            "错误统计与分类"
+          ],
+          "reuse_value": "错误分析与批改解耦，可复用于作业批改、学情分析等场景"
+        },
+        {
+          "service_code": "INT-ANNOTATION",
+          "service_name": "智能评语与批注生成服务",
+          "service_desc": "生成个性化、精准的作业批注与评语",
+          "tech_stack": {
+            "llm": "通义千问API",
+            "orchestration": "LangChain",
+            "template": "Jinja2",
+            "api": "FastAPI"
+          },
+          "core_capabilities": [
+            "上下文相关评语生成",
+            "错误位置精准批注",
+            "评语模板化配置+个性化生成",
+            "多语言/多课程评语适配",
+            "批注质量校验"
+          ],
+          "reuse_value": "批注生成与错误分析解耦，可复用于所有课程的作业批改"
+        },
+        {
+          "service_code": "INT-CHAT",
+          "service_name": "多轮对话智能答疑服务",
+          "service_desc": "基于知识图谱和学习行为时序的课程专属多轮答疑",
+          "tech_stack": {
+            "llm": "通义千问API",
+            "rag": "LangChain + FAISS",
+            "graph": "Neo4j",
+            "memory": "Redis",
+            "timeseries": "TimescaleDB",
+            "api": "FastAPI"
+          },
+          "core_capabilities": [
+            "知识点精准回答（正确率≥95%）",
+            "多轮追问与引导",
+            "错误认知纠正",
+            "课程专属语料适配",
+            "对话上下文管理",
+            "学生历史行为感知（结合时序数据）"
+          ],
+          "reuse_value": "答疑能力原子化，可复用于实时答疑、作业批改互动等场景"
+        },
+        {
+          "service_code": "INT-EVALUATE",
+          "service_name": "知识点掌握度评估服务",
+          "service_desc": "量化评估学生知识点掌握程度，结合历史趋势",
+          "tech_stack": {
+            "algorithm": "py-irt",
+            "bayesian": "Pyro",
+            "timeseries": "TimescaleDB",
+            "api": "FastAPI"
+          },
+          "core_capabilities": [
+            "知识点掌握度量化",
+            "个体/群体掌握度统计",
+            "薄弱点定位与分析",
+            "掌握度动态更新",
+            "历史趋势分析",
+            "评估结果标准化输出"
+          ],
+          "reuse_value": "掌握度评估与学情分析解耦，可复用于预警、练习生成等场景"
+        },
+        {
+          "service_code": "INT-EXERCISE",
+          "service_name": "靶向性增量练习生成服务",
+          "service_desc": "基于薄弱点学习规律生成个性化、关联式练习题",
+          "tech_stack": {
+            "llm": "通义千问API",
+            "template": "Jinja2",
+            "timeseries": "TimescaleDB",
+            "storage": "PostgreSQL",
+            "api": "FastAPI"
+          },
+          "core_capabilities": [
+            "薄弱点靶向练习生成",
+            "知识点关联练习推荐",
+            "难度/题型适配",
+            "学习规律感知（最佳练习时间）",
+            "练习答案与解析生成",
+            "练习质量校验"
+          ],
+          "reuse_value": "练习生成与学情分析解耦，可复用于所有课程的个性化练习推送"
+        },
+        {
+          "service_code": "INT-WARNING",
+          "service_name": "学情风险预警服务",
+          "service_desc": "基于多维度时序数据的学情异常实时预警",
+          "tech_stack": {
+            "streaming": "Flink Python API",
+            "timeseries": "TimescaleDB",
+            "rule_engine": "Durable Rules",
+            "notification": "钉钉/邮件SDK",
+            "api": "FastAPI"
+          },
+          "core_capabilities": [
+            "多维度预警模型（专注度下降/成绩波动/参与度降低）",
+            "时序数据异常检测",
+            "预警等级划分",
+            "预警规则动态配置",
+            "实时预警通知触发",
+            "预警结果统计与分析"
+          ],
+          "reuse_value": "预警能力原子化，可复用于所有课程的学情监控"
+        }
+      ]
+    },
+    {
+      "layer_code": "ADAPT",
+      "layer_name": "平台适配层",
+      "layer_desc": "实现平台可嵌入式扩展，适配第三方教学平台对接",
+      "services": [
+        {
+          "service_code": "ADAPT-GATEWAY",
+          "service_name": "第三方平台适配网关服务",
+          "service_desc": "标准化对接第三方教学平台，封装异构API",
+          "tech_stack": {
+            "primary": "FastAPI",
+            "http_client": "httpx",
+            "circuit_breaker": "pybreaker",
+            "service_discovery": "Consul"
+          },
+          "core_capabilities": [
+            "主流教学平台API适配（超星/钉钉）",
+            "异构API标准化封装",
+            "跨平台请求转发/响应适配",
+            "接口异常处理与重试",
+            "网关访问日志记录"
+          ],
+          "reuse_value": "解除业务与第三方平台API耦合，可复用于所有对接平台"
+        },
+        {
+          "service_code": "ADAPT-COMPONENT",
+          "service_name": "嵌入式组件封装与分发服务",
+          "service_desc": "将核心功能封装为轻量化嵌入式组件",
+          "tech_stack": {
+            "web": "Vue 3 + TypeScript",
+            "embed": "iframe / Web Components",
+            "sdk": "UMD模块 / npm包",
+            "backend": "FastAPI"
+          },
+          "core_capabilities": [
+            "H5/Web组件封装",
+            "组件标准化分发与配置",
+            "组件版本管理",
+            "第三方平台页面融合",
+            "组件权限控制"
+          ],
+          "reuse_value": "组件封装与业务解耦，可复用于所有课程Agent的跨平台嵌入"
+        },
+        {
+          "service_code": "ADAPT-SYNC",
+          "service_name": "跨平台数据同步服务",
+          "service_desc": "实现自研平台与第三方平台双向数据同步（含时序数据）",
+          "tech_stack": {
+            "primary": "Celery",
+            "cdc": "Debezium Python",
+            "mq": "Kafka",
+            "timeseries": "TimescaleDB",
+            "storage": "PostgreSQL"
+          },
+          "core_capabilities": [
+            "实时/定时数据同步策略",
+            "同步数据冲突处理",
+            "同步任务监控与告警",
+            "同步日志记录与溯源",
+            "多平台同步适配",
+            "时序数据同步"
+          ],
+          "reuse_value": "数据同步与业务解耦，可复用于所有对接平台的数据一致性保障"
+        }
+      ]
+    },
+    {
+      "layer_code": "AGENT",
+      "layer_name": "AI Agent生命周期层",
+      "layer_desc": "实现课程AI Agent的标准化创建、部署与注销",
+      "services": [
+        {
+          "service_code": "AGENT-TEMPLATE",
+          "service_name": "AI Agent模板管理服务",
+          "service_desc": "提供标准化Agent模板，支撑可视化构建",
+          "tech_stack": {
+            "primary": "FastAPI",
+            "storage": "PostgreSQL JSONB",
+            "schema": "Pydantic"
+          },
+          "core_capabilities": [
+            "多类型Agent模板定义",
+            "模板配置项规范制定",
+            "模板版本管理与分类",
+            "基于模板的Agent自定义",
+            "模板复用与共享"
+          ],
+          "reuse_value": "Agent构建与底层服务解耦，可复用于所有课程Agent的快速开发"
+        },
+        {
+          "service_code": "AGENT-DEPLOY",
+          "service_name": "AI Agent部署与实例化服务",
+          "service_desc": "实现课程Agent的自动化、标准化部署",
+          "tech_stack": {
+            "container": "Docker + Kubernetes",
+            "client": "kubernetes Python client",
+            "config": "Helm Charts"
+          },
+          "core_capabilities": [
+            "容器化部署",
+            "多环境部署适配",
+            "实例扩缩容",
+            "一键部署与状态返回",
+            "部署参数配置"
+          ],
+          "reuse_value": "部署逻辑与业务解耦，可复用于所有课程Agent的标准化部署"
+        },
+        {
+          "service_code": "AGENT-DESTROY",
+          "service_name": "AI Agent注销与资源回收服务",
+          "service_desc": "标准化注销Agent并回收资源",
+          "tech_stack": {
+            "primary": "kubernetes Python client",
+            "cleanup": "Celery",
+            "storage_clean": "MinIO SDK"
+          },
+          "core_capabilities": [
+            "Agent实例注销",
+            "计算/存储/网络资源回收",
+            "历史数据保留/清理配置",
+            "注销日志记录",
+            "资源回收校验"
+          ],
+          "reuse_value": "资源回收与Agent运行解耦，可复用于所有课程Agent的生命周期管理"
+        }
+      ]
+    },
+    {
+      "layer_code": "VISUAL",
+      "layer_name": "可视化工具层",
+      "layer_desc": "降低使用门槛，支撑教学决策与Agent可视化构建",
+      "services": [
+        {
+          "service_code": "VISUAL-AGENT",
+          "service_name": "可视化AI Agent构建服务",
+          "service_desc": "无代码/低代码可视化构建课程专属Agent",
+          "tech_stack": {
+            "frontend": "Vue 3 + Element Plus",
+            "drag_drop": "Vue Flow",
+            "backend": "FastAPI",
+            "storage": "PostgreSQL"
+          },
+          "core_capabilities": [
+            "可视化功能组件配置",
+            "知识图谱接入配置",
+            "Agent参数调优",
+            "一键部署与发布",
+            "Agent配置预览与校验"
+          ],
+          "reuse_value": "Agent构建与底层服务解耦，可复用于所有课程，适配不同教师技术能力"
+        },
+        {
+          "service_code": "VISUAL-ANALYSIS",
+          "service_name": "教学数据分析与报表服务",
+          "service_desc": "生成标准化教学数据分析报表（含趋势图表）",
+          "tech_stack": {
+            "frontend": "Vue 3 + ECharts",
+            "backend": "FastAPI + pandas",
+            "timeseries": "TimescaleDB",
+            "report_gen": "ReportLab"
+          },
+          "core_capabilities": [
+            "多维度报表生成",
+            "报表自定义配置",
+            "数据可视化展示（含趋势图）",
+            "报表导出与分享",
+            "报表定时生成与推送"
+          ],
+          "reuse_value": "报表生成与数据存储解耦，可复用于所有课程的教学决策支持"
+        },
+        {
+          "service_code": "VISUAL-DISPLAY",
+          "service_name": "通用可视化展示服务",
+          "service_desc": "提供标准化可视化组件，适配多终端展示",
+          "tech_stack": {
+            "frontend": "Vue 3 + ECharts / AntV",
+            "graph": "G6",
+            "timeseries": "TimescaleDB",
+            "api": "FastAPI"
+          },
+          "core_capabilities": [
+            "知识图谱可视化",
+            "学情画像可视化",
+            "错误分布可视化",
+            "时序趋势可视化",
+            "组件灵活组合配置",
+            "Web端适配"
+          ],
+          "reuse_value": "可视化展示与业务数据解耦，可复用于所有模块的可视化需求"
+        }
+      ]
+    }
+  ],
+  "service_interface_spec": {
+    "protocol": "RESTful API / gRPC",
+    "data_format": "JSON / Protobuf",
+    "auth_type": "JWT Token",
+    "version_control": "URL路径版本（/v1/xxx）",
+    "error_code_spec": "统一错误码体系（如DATA-001：采集服务异常）",
+    "api_document": "FastAPI自动生成OpenAPI 3.0"
+  },
+  "reuse_strategy": {
+    "base_service": "全场景复用（所有课程/平台/Agent）",
+    "knowledge_service": "跨课程复用（知识标准化）",
+    "data_service": "全平台复用（数据采集/存储/时序）",
+    "intelligence_service": "跨场景复用（原子能力组合）",
+    "adapt_service": "跨平台复用（新增平台仅需适配网关）",
+    "agent_service": "跨Agent复用（模板化构建）",
+    "visual_service": "跨角色复用（教师/学生/管理员）"
+  },
+  "deployment_architecture": {
+    "orchestration": "Kubernetes 1.28",
+    "service_mesh": "Istio 1.20",
+    "python_base_image": "python:3.11-slim",
+    "monitoring": "Prometheus + Grafana",
+    "tracing": "Jaeger + OpenTelemetry",
+    "logging": "ELK Stack",
+    "ci_cd": "GitLab CI + ArgoCD"
+  },
+  "performance_target": {
+    "concurrent_users": "500",
+    "api_response_time": "<200ms (p95)",
+    "retrieval_latency": "<100ms",
+    "rerank_latency": "<50ms",
+    "end_to_end_latency": "<500ms",
+    "时序写入吞吐": "50000 点/秒（TimescaleDB）",
+    "时序查询延迟": "<50ms（近实时）, <500ms（历史聚合）",
+    "availability": "99.9%",
+    "data_durability": "99.999999%"
+  }
+}
