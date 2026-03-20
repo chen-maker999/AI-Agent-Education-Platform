@@ -1,6 +1,7 @@
 """Kimi API client for LLM interactions."""
 
 import json
+import asyncio
 from typing import Optional, List, Dict, Any
 from common.core.config import settings
 import httpx
@@ -13,16 +14,19 @@ class KimiClient:
         self.api_key = api_key or settings.KIMI_API_KEY
         self.endpoint = endpoint or settings.KIMI_API_ENDPOINT
         self.model = model or settings.KIMI_MODEL
-        self.timeout = settings.KIMI_TIMEOUT
+        self.timeout = httpx.Timeout(settings.KIMI_TIMEOUT * 2.0, connect=10.0)  # 增加超时时间
+        self.max_retries = 5  # 增加重试次数
+        self.retry_delay = 1.0  # 初始重试延迟（秒）
 
     async def chat(
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 2048,
+        tools: Optional[List[Dict[str, Any]]] = None,
         **kwargs
     ) -> Dict[str, Any]:
-        """Send chat completion request to Kimi API."""
+        """Send chat completion request to Kimi API with retry logic for rate limits."""
         if not self.api_key:
             return {"error": "Kimi API key not configured", "choices": [{"message": {"content": "API key not configured"}}]}
 
@@ -38,17 +42,55 @@ class KimiClient:
             "max_tokens": max_tokens,
         }
 
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(url, json=payload, headers=headers)
-                if response.status_code == 200:
-                    return response.json()
-                else:
-                    return {"error": f"API error: {response.status_code}", "detail": response.text}
-        except httpx.RequestError as e:
-            return {"error": f"Connection error: {str(e)}"}
-        except Exception as e:
-            return {"error": f"Unexpected error: {str(e)}"}
+        # 如果有工具定义，添加 tools 参数
+        if tools:
+            payload["tools"] = tools
+
+        last_error = None
+        retry_delay = self.retry_delay
+
+        for attempt in range(self.max_retries):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.post(url, json=payload, headers=headers)
+
+                    if response.status_code == 200:
+                        return response.json()
+                    elif response.status_code == 429:
+                        # Rate limit - 重试
+                        last_error = f"API rate limit exceeded (429)"
+                        if attempt < self.max_retries - 1:
+                            await asyncio.sleep(retry_delay)
+                            retry_delay *= 2  # 指数退避
+                            continue
+                        else:
+                            return {"error": f"API error: {response.status_code} - Rate limit exceeded after {self.max_retries} retries", "detail": response.text}
+                    else:
+                        return {"error": f"API error: {response.status_code}", "detail": response.text}
+
+            except httpx.RequestError as e:
+                last_error = f"Connection error: {str(e)}"
+                if attempt < self.max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+            except asyncio.TimeoutError as e:
+                last_error = f"Request timeout: API response exceeded {self.timeout} seconds"
+                if attempt < self.max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+            except Exception as e:
+                last_error = f"Unexpected error: {str(e)}"
+                if attempt < self.max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+
+        # 记录详细错误日志
+        import logging
+        logging.warning(f"Kimi API调用失败: {last_error}, 尝试次数: {self.max_retries}")
+        return {"error": last_error or "Unknown error"}
 
     async def chat_completion(
         self,

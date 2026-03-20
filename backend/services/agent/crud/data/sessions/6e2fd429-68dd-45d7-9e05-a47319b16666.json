@@ -1,0 +1,12 @@
+[
+  {
+    "role": "user",
+    "content": "下载transformer论文到知识库",
+    "time": "2026-03-19T07:25:28.791879"
+  },
+  {
+    "role": "assistant",
+    "content": "我已经找到了transformer论文的下载链接。以下是来源链接：\n\n1. [Attention Is All You Need - arXiv.org](https://arxiv.org/abs/1706.03762) 提供了论文的摘要和详细信息。\n2. [arXiv.org e-Print archive](https://arxiv.org/pdf/1706.03762) 提供了论文的PDF下载链接。\n\n请问您希望将论文下载到知识库的哪个特定目录或文件路径下？",
+    "time": "2026-03-19T07:25:44.114081"
+  }
+]

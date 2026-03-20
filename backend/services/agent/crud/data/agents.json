@@ -1,0 +1,22 @@
+[
+  {
+    "id": "2b383db8-7bf3-4d30-8e17-fa11f8727d26",
+    "name": "超级小爱",
+    "prompt": "智能学习助手",
+    "callable_by_others": false,
+    "english_id": "",
+    "when_to_call": "",
+    "enabled_tools": [
+      "reading",
+      "editing",
+      "terminal",
+      "preview",
+      "web_search",
+      "download_to_knowledge",
+      "knowledge_search"
+    ],
+    "avatar": null,
+    "created_at": "2026-03-19T03:38:15.945133",
+    "updated_at": "2026-03-19T09:36:37.067443"
+  }
+]

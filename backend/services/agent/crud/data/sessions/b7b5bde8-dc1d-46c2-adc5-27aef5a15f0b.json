@@ -1,0 +1,12 @@
+[
+  {
+    "role": "user",
+    "content": "下载transformer论文到知识库",
+    "time": "2026-03-19T07:31:13.497494"
+  },
+  {
+    "role": "assistant",
+    "content": "抱歉，调用 AI 服务时出错：API error: 429 - Rate limit exceeded after 3 retries",
+    "time": "2026-03-19T07:31:28.827418"
+  }
+]

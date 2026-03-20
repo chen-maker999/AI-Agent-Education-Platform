@@ -1,5 +1,10 @@
 """Main FastAPI application - aggregates all services."""
 
+import os
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+
 import asyncio
 # Windows 上使用 SelectorEventLoop 避免 Proactor 问题
 import sys
@@ -30,7 +35,8 @@ from services.knowledge.chunk.main import router as chunk_router
 from services.knowledge.embedding.main import router as embedding_router
 from services.knowledge.faiss_indexer.main import router as faiss_router
 from services.knowledge.es_indexer.main import router as es_router
-from services.knowledge.query_rewrite.main import router as query_rewrite_router
+from services.knowledge.query.main import router as query_router
+from services.knowledge.embedding.tfidf_main import router as tfidf_router
 from services.knowledge.router.main import router as router_router
 from services.knowledge.search.main import router as search_router
 from services.knowledge.fusion.main import router as fusion_router
@@ -43,12 +49,15 @@ from services.intelligence.annotation.main import router as annotation_router
 from services.intelligence.evaluate.main import router as evaluate_router
 from services.intelligence.parse.main import router as parse_router
 from services.intelligence.exercise.main import router as exercise_router
+from services.intelligence.worksheet.main import router as worksheet_router
 from services.intelligence.warning.main import router as warning_router
 from services.adapt.gateway.main import router as gateway_router
 from services.adapt.sync.main import router as sync_router
 from services.agent.template.main import router as agent_template_router
 from services.agent.deploy.main import router as agent_deploy_router
 from services.agent.destroy.main import router as agent_destroy_router
+from services.agent.tools.main import router as agent_tools_router
+from services.agent.crud.main import router as agent_crud_router
 from services.visual.display.main import router as visual_router
 
 app = FastAPI(
@@ -74,34 +83,10 @@ async def startup_event():
     """Create database tables on startup."""
     from sqlalchemy import text
     from common.database.postgresql import async_engine
-    
-    # 先删除可能存在的旧表
-    drop_tables_sql = [
-        "DROP TABLE IF EXISTS chat_feedback",
-        "DROP TABLE IF EXISTS chat_messages",
-        "DROP TABLE IF EXISTS chat_sessions",
-        "DROP TABLE IF EXISTS knowledge_points",
-        "DROP TABLE IF EXISTS feedbacks",
-        "DROP TABLE IF EXISTS timeseries_data",
-        "DROP TABLE IF EXISTS portraits",
-        "DROP TABLE IF EXISTS homework",
-        "DROP TABLE IF EXISTS warning_rules",
-        "DROP TABLE IF EXISTS warnings",
-        "DROP TABLE IF EXISTS users",
-        "DROP TABLE IF EXISTS rag_documents",
-        "DROP TABLE IF EXISTS rag_sessions",
-        "DROP TABLE IF EXISTS vector_documents",
-    ]
-    
-    async with async_engine.begin() as conn:
-        for sql in drop_tables_sql:
-            try:
-                await conn.execute(text(sql))
-            except Exception as e:
-                print(f"Drop warning: {e}")
-    
-    print("Old tables dropped!")
-    
+
+    # 不再删除旧表，保留数据
+    # 只有在需要重建表时才执行删除操作
+
     # 创建所有需要的数据库表
     tables_sql = [
         # 用户表
@@ -279,6 +264,25 @@ async def startup_event():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""",
+        # 练习文件表
+        """CREATE TABLE IF NOT EXISTS worksheets (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            worksheet_id VARCHAR(100) UNIQUE NOT NULL,
+            title VARCHAR(500) NOT NULL,
+            course VARCHAR(100),
+            source_doc_id VARCHAR(100),
+            source_filename VARCHAR(500),
+            file_url TEXT,
+            file_size INTEGER DEFAULT 0,
+            exercise_count INTEGER DEFAULT 0,
+            exercise_type VARCHAR(100),
+            difficulty VARCHAR(20),
+            status VARCHAR(50) DEFAULT 'pending',
+            created_by VARCHAR(100),
+            exercises_content JSONB DEFAULT '[]'::jsonb,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
     ]
     
     async with async_engine.begin() as conn:
@@ -343,7 +347,8 @@ app.include_router(chunk_router, prefix=settings.API_PREFIX)
 app.include_router(embedding_router, prefix=settings.API_PREFIX)
 app.include_router(faiss_router, prefix=settings.API_PREFIX)
 app.include_router(es_router, prefix=settings.API_PREFIX)
-app.include_router(query_rewrite_router, prefix=settings.API_PREFIX)
+app.include_router(query_router, prefix=settings.API_PREFIX)
+app.include_router(tfidf_router, prefix=settings.API_PREFIX)
 app.include_router(router_router, prefix=settings.API_PREFIX)
 app.include_router(search_router, prefix=settings.API_PREFIX)
 app.include_router(fusion_router, prefix=settings.API_PREFIX)
@@ -356,12 +361,15 @@ app.include_router(annotation_router, prefix=settings.API_PREFIX)
 app.include_router(evaluate_router, prefix=settings.API_PREFIX)
 app.include_router(parse_router, prefix=settings.API_PREFIX)
 app.include_router(exercise_router, prefix=settings.API_PREFIX)
+app.include_router(worksheet_router, prefix=settings.API_PREFIX)
 app.include_router(warning_router, prefix=settings.API_PREFIX)
 app.include_router(gateway_router, prefix=settings.API_PREFIX)
 app.include_router(sync_router, prefix=settings.API_PREFIX)
 app.include_router(agent_template_router, prefix=settings.API_PREFIX)
 app.include_router(agent_deploy_router, prefix=settings.API_PREFIX)
 app.include_router(agent_destroy_router, prefix=settings.API_PREFIX)
+app.include_router(agent_tools_router, prefix=settings.API_PREFIX)
+app.include_router(agent_crud_router, prefix=settings.API_PREFIX)
 app.include_router(visual_router, prefix=settings.API_PREFIX)
 
 

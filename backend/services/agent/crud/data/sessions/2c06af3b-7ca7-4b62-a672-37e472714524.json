@@ -1,0 +1,12 @@
+[
+  {
+    "role": "user",
+    "content": "下载视频跟踪的论文到知识库，文件名就用下载下来的文件名",
+    "time": "2026-03-19T08:10:16.812321"
+  },
+  {
+    "role": "assistant",
+    "content": "论文“Learning to Track Multiple Objects with Overlap Aware Matching”已成功下载到知识库中，文件名为“Learning_to_Track_Multiple_Objects_with_Overlap_Aware_Matching.pdf”。",
+    "time": "2026-03-19T08:10:31.104704"
+  }
+]
