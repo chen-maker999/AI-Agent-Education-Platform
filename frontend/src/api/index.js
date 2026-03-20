@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const api = axios.create({
   baseURL: '/api/v1',
-  timeout: 30000
+  timeout: 120000  // 120秒超时，适用于生成练习等耗时操作
 })
 
 api.interceptors.request.use(config => {
@@ -25,11 +25,12 @@ api.interceptors.response.use(
       const refreshToken = localStorage.getItem('refreshToken')
       if (refreshToken) {
         try {
-          const res = await axios.post('/api/v1/auth/refresh', { refresh_token: refreshToken })
-          if (res.data.code === 200) {
-            localStorage.setItem('token', res.data.data.access_token)
-            localStorage.setItem('refreshToken', res.data.data.refresh_token)
-            error.config.headers.Authorization = `Bearer ${res.data.data.access_token}`
+          // 注意：这里的 res 已经被上一个拦截器提取了 data，所以是 res.data
+          const res = await api.post('/auth/refresh', { refresh_token: refreshToken })
+          if (res.code === 200) {
+            localStorage.setItem('token', res.data.access_token)
+            localStorage.setItem('refreshToken', res.data.refresh_token)
+            error.config.headers.Authorization = `Bearer ${res.data.access_token}`
             return api.request(error.config)
           }
         } catch (e) {
@@ -87,6 +88,50 @@ export const homeworkApi = {
   presigned: (id) => api.get(`/homework/${id}/presigned`),
   statistics: () => api.get('/homework/statistics/summary'),
   updateStatus: (id, status) => api.patch(`/homework/${id}/status`, { status })
+}
+
+// 练习文件生成 API
+export const worksheetApi = {
+  // 生成练习文件
+  generate: (data) => api.post('/worksheet/generate', data),
+
+  // 获取练习文件列表
+  list: (params) => api.get('/worksheet/list', { params }),
+
+  // 获取练习文件详情
+  get: (worksheetId) => api.get(`/worksheet/${worksheetId}`),
+
+  // 下载练习文件PDF
+  download: (worksheetId) => api.get(`/worksheet/${worksheetId}/download`, {
+    responseType: 'blob'
+  }),
+
+  // 预览练习内容
+  preview: (worksheetId) => api.get(`/worksheet/preview/${worksheetId}`),
+
+  // 删除练习文件
+  delete: (worksheetId) => api.delete(`/worksheet/${worksheetId}`)
+}
+
+// Agent 内置工具 API（与创建智能体中的「工具-内置」对应，需真实调用后端）
+export const agentToolsApi = {
+  list: () => api.get('/agent/tools/list'),
+  read: (data) => api.post('/agent/tools/read', data),
+  edit: (data) => api.post('/agent/tools/edit', data),
+  editWrite: (data) => api.post('/agent/tools/edit/write', data),
+  terminal: (data) => api.post('/agent/tools/terminal', data),
+  preview: (data) => api.post('/agent/tools/preview', data),
+  webSearch: (data) => api.post('/agent/tools/web_search', data)
+}
+
+// Agent CRUD + 对话
+export const agentApi = {
+  list: (params) => api.get('/agent', { params }),
+  get: (id) => api.get(`/agent/${id}`),
+  create: (data) => api.post('/agent', data),
+  update: (id, data) => api.put(`/agent/${id}`, data),
+  delete: (id) => api.delete(`/agent/${id}`),
+  chat: (data) => api.post('/agent/chat', data)
 }
 
 export const portraitApi = {
@@ -171,11 +216,30 @@ export const ragApi = {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
 
-  // 获取已上传的文档列表
-  listDocuments: (courseId = 'default') => api.get('/knowledge/rag/documents', { params: { course_id: courseId } }),
+  // 获取已上传的文档列表；opts.allCourses=true 时列出所有 course_id（脚本/Agent 导入的专题库也会显示）
+  listDocuments: (courseId = 'default', opts = {}) => {
+    const params = {
+      course_id: courseId,
+      page: opts.page ?? 1,
+      page_size: opts.pageSize ?? 100
+    }
+    if (opts.allCourses) params.all_courses = true
+    return api.get('/knowledge/rag/documents', { params })
+  },
+
+  // 从URL抓取文档
+  fetchDocument: (url, courseId = 'default') => {
+    const formData = new FormData()
+    formData.append('url', url)
+    formData.append('course_id', courseId)
+    return api.post('/knowledge/rag/fetch', formData)
+  },
 
   // 删除文档
-  deleteDocument: (docId) => api.delete(`/knowledge/rag/documents/${docId}`)
+  deleteDocument: (docId) => api.delete(`/knowledge/rag/documents/${docId}`),
+
+  // 按文件名删除所有文档块
+  deleteDocumentByFilename: (filename) => api.delete(`/knowledge/rag/documents/by-filename/${encodeURIComponent(filename)}`)
 }
 
 // 智能问答 Chat API

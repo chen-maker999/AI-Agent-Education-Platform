@@ -1,0 +1,12 @@
+[
+  {
+    "role": "user",
+    "content": "帮我从网上下载一篇transformer的论文到知识库",
+    "time": "2026-03-19T06:42:56.175377"
+  },
+  {
+    "role": "assistant",
+    "content": "抱歉，调用 AI 服务时出错：API error: 429",
+    "time": "2026-03-19T06:43:11.223788"
+  }
+]

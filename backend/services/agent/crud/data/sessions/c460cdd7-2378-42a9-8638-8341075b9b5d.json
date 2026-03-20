@@ -1,0 +1,12 @@
+[
+  {
+    "role": "user",
+    "content": "帮我从网上下载一篇transformer的论文到知识库",
+    "time": "2026-03-19T06:26:27.624092"
+  },
+  {
+    "role": "assistant",
+    "content": "我无法直接从网上下载文件到知识库，但你可以通过搜索引擎找到关于Transformer的论文，然后下载到你的设备上。以下是一篇著名的关于Transformer模型的论文，你可以访问链接并下载：\n\n**论文标题：** \"Attention Is All You Need\"\n\n**作者：** Vaswani, Ashish, et al.\n\n**论文链接：** [Attention Is All You Need](https://arxiv.org/abs/1706.03762)\n\n你可以直接点击链接访问论文的预印本服务器ArXiv，并下载论文的PDF文件。希望这能帮到你！",
+    "time": "2026-03-19T06:26:34.767114"
+  }
+]

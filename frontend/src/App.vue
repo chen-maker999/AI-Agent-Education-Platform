@@ -72,21 +72,43 @@
       </div>
     </nav>
 
-    <!-- 左侧竖向控制条 -->
-    <div class="left-sidebar-toggle" @click="sidebarCollapsed = !sidebarCollapsed" v-if="authStore.isAuthenticated">
-      <img :src="navIcons.homework" alt="作业" class="toggle-icon">
+    <!-- 左侧竖向标签：作业 / 智能体 -->
+    <div class="left-sidebar-tags" v-if="authStore.isAuthenticated">
+      <div
+        class="left-tag tag-homework"
+        :class="{ active: !sidebarCollapsed && sidebarMode === 'homework' }"
+        @click="openSidebar('homework')"
+        title="作业管理"
+      >
+        <img :src="navIcons.homework" alt="作业" class="tag-icon">
+        <span class="tag-text">作业</span>
+      </div>
+      <div
+        class="left-tag tag-agent"
+        :class="{ active: !sidebarCollapsed && sidebarMode === 'agent' }"
+        @click="openSidebar('agent')"
+        title="智能体管理"
+      >
+        <svg class="tag-icon-svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 8V4H8"/><rect x="2" y="14" width="8" height="8" rx="2" ry="2"/><rect x="14" y="14" width="8" height="8" rx="2" ry="2"/><path d="M18 8h-4V4"/><path d="M6 8H4"/>
+        </svg>
+        <span class="tag-text">智能体</span>
+      </div>
     </div>
 
-    <!-- 侧边栏 - 作业管理 -->
+    <!-- 侧边栏 - 作业管理 / 智能体管理 -->
     <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }" v-if="authStore.isAuthenticated">
-      <div class="sidebar-toggle" @click="sidebarCollapsed = !sidebarCollapsed">
+      <div class="sidebar-toggle" @click="sidebarCollapsed = true">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline :points="sidebarCollapsed ? '9 18 15 12 9 6' : '15 18 9 12 15 6'"/>
+          <polyline points="15 18 9 12 15 6"/>
         </svg>
       </div>
       <div class="sidebar-content" v-show="!sidebarCollapsed">
-        <div class="sidebar-homework">
+        <div class="sidebar-homework" v-show="sidebarMode === 'homework'">
           <Homework />
+        </div>
+        <div class="sidebar-agent" v-show="sidebarMode === 'agent'">
+          <Agent @close="sidebarCollapsed = true" />
         </div>
       </div>
     </aside>
@@ -106,6 +128,7 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import Homework from '@/views/Homework.vue'
+import Agent from '@/views/Agent.vue'
 import elementIcon from '../icons/icon_u7adlm4fwln/element.png'
 import chatIcon from '../icons/icon_u7adlm4fwln/duihua.png'
 import knowledgeIcon from '../icons/icon_u7adlm4fwln/shujia.png'
@@ -119,6 +142,12 @@ const authStore = useAuthStore()
 const router = useRouter()
 const showUserMenu = ref(false)
 const sidebarCollapsed = ref(true)
+const sidebarMode = ref('homework') // 'homework' | 'agent'
+
+function openSidebar(mode) {
+  sidebarMode.value = mode
+  if (sidebarCollapsed.value) sidebarCollapsed.value = false
+}
 
 const userRole = computed(() => authStore.user?.role || 'student')
 const isStudent = computed(() => userRole.value === 'student')
@@ -210,41 +239,76 @@ const handleLogout = async () => {
 .user-dropdown a:first-child { border-radius: var(--radius) var(--radius) 0 0; }
 .user-dropdown a:last-child { border-radius: 0 0 var(--radius) var(--radius); }
 
-/* 左侧竖向控制条 */
-.left-sidebar-toggle {
+/* 左侧竖向标签：作业 / 智能体 */
+.left-sidebar-tags {
   position: fixed;
   top: 80px;
   left: 0;
-  width: 24px;
-  height: 64px;
-  background: var(--primary);
+  z-index: 99;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.left-tag {
+  width: 28px;
+  min-height: 48px;
+  padding: 8px 4px;
   border: none;
   border-radius: 0 8px 8px 0;
   cursor: pointer;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  z-index: 99;
+  gap: 4px;
   transition: all 0.2s;
-  box-shadow: 2px 0 8px rgba(0,0,0,0.15);
 }
 
-.left-sidebar-toggle:hover {
-  width: 28px;
-  background: var(--primary-dark, #4a6cf7);
+.left-tag:hover {
+  width: 34px;
 }
 
-.left-sidebar-toggle .toggle-icon {
-  width: 16px;
-  height: 16px;
+.left-tag.tag-homework {
+  background: #3b82f6;
+  color: white;
+}
+
+.left-tag.tag-homework:hover {
+  background: #2563eb;
+}
+
+.left-tag.tag-agent {
+  background: #22c55e;
+  color: white;
+}
+
+.left-tag.tag-agent:hover {
+  background: #16a34a;
+}
+
+.left-tag .tag-icon {
+  width: 18px;
+  height: 18px;
   object-fit: contain;
   filter: brightness(0) invert(1);
 }
 
-.left-sidebar-toggle .toggle-icon {
+.left-tag .tag-icon-svg {
+  flex-shrink: 0;
+  color: white;
   width: 18px;
   height: 18px;
-  object-fit: contain;
+}
+
+.left-tag .tag-text {
+  font-size: 11px;
+  writing-mode: vertical-rl;
+  letter-spacing: 1px;
+  line-height: 1.2;
+  font-weight: 500;
+  color: white;
 }
 
 /* 侧边栏样式 */
@@ -331,6 +395,56 @@ const handleLogout = async () => {
 }
 .sidebar-homework :deep(.homework-table-modern table) {
   min-width: 380px;
+}
+
+/* 侧边栏内智能体页面 */
+.sidebar-agent {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.sidebar-agent :deep(.agent-page) {
+  padding: 12px 10px 16px;
+  background: #ffffff;
+}
+
+.sidebar-agent :deep(.agent-breadcrumb) {
+  margin-bottom: 10px;
+}
+
+.sidebar-agent :deep(.agent-header) {
+  margin-bottom: 10px;
+}
+
+.sidebar-agent :deep(.agent-section) {
+  margin-bottom: 10px;
+}
+
+.sidebar-agent :deep(.agent-page .form-field) {
+  margin-bottom: 12px;
+}
+
+.sidebar-agent :deep(.avatar-placeholder) {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 12px;
+}
+
+.sidebar-agent :deep(.advanced-card) {
+  padding: 14px;
+}
+
+.sidebar-agent :deep(.advanced-card .form-field) {
+  margin-bottom: 10px;
+}
+
+.sidebar-agent :deep(.agent-textarea) {
+  min-height: 80px;
+}
+
+.sidebar-agent :deep(.agent-actions) {
+  margin-top: 14px;
+  padding-top: 12px;
 }
 
 .sidebar-item {

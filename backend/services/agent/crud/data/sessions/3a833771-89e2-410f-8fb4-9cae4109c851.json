@@ -1,0 +1,12 @@
+[
+  {
+    "role": "user",
+    "content": "帮我随便下载一篇transformer的论文，存到知识库",
+    "time": "2026-03-19T04:11:24.164710"
+  },
+  {
+    "role": "assistant",
+    "content": "很抱歉，我无法直接下载文件或将文件存储到知识库中。但我可以帮助你找到一篇关于Transformer的论文，并提供下载链接，你可以自己下载。\n\n这篇是一篇比较经典的Transformer论文：《Attention is All You Need》。你可以通过以下链接下载这篇论文：\n\nhttps://arxiv.org/pdf/1706.03762.pdf\n\n你可以点击链接，直接下载这篇论文的PDF文件。希望这篇论文对你有帮助。如果你还有其他问题，欢迎随时问我。",
+    "time": "2026-03-19T04:11:28.709590"
+  }
+]

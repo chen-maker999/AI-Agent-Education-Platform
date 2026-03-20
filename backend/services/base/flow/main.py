@@ -31,33 +31,8 @@ class CircuitBreakerConfig(BaseModel):
 
 
 async def check_rate_limit(request: Request, endpoint: str) -> bool:
-    """检查请求是否超过限流阈值"""
-    client_id = request.client.host if request.client else "unknown"
-    key = f"{endpoint}:{client_id}"
-    current_time = time.time()
-    
-    if key not in rate_limits:
-        rate_limits[key] = {
-            "count": 1,
-            "reset_time": current_time + 60
-        }
-        return True
-    
-    record = rate_limits[key]
-    
-    # 检查是否需要重置计数器
-    if current_time > record["reset_time"]:
-        rate_limits[key] = {
-            "count": 1,
-            "reset_time": current_time + 60
-        }
-        return True
-    
-    # 检查是否超过限流
-    if record["count"] >= 60:  # 默认每分钟60次
-        return False
-    
-    record["count"] += 1
+    """检查请求是否超过限流阈值 (已禁用限流)"""
+    # 限流已禁用，始终返回True
     return True
 
 

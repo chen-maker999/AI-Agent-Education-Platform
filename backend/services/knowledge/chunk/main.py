@@ -150,13 +150,39 @@ def chunk_text_by_strategy(text: str, strategy: Dict) -> List[str]:
             if current_chunk:
                 chunks.append(current_chunk)
                 current_chunk = ""
-            
-            # 递归处理长段落
-            sub_chunks = chunk_text_by_strategy(
-                segment, 
-                {"chunk_size": chunk_size // 2, "overlap": overlap // 2, "separators": separators[1:]}
-            )
-            chunks.extend(sub_chunks)
+
+            # 递归处理长段落，但设置最大递归深度限制
+            new_chunk_size = chunk_size // 2
+            new_overlap = overlap // 2
+            new_separators = separators[1:] if len(separators) > 1 else separators
+
+            # 如果 chunk_size 已经太小，直接强制分割
+            if new_chunk_size < 50:
+                # 强制按固定长度分割
+                fixed_chunks = []
+                for i in range(0, len(segment), chunk_size):
+                    fixed_chunks.append(segment[i:i + chunk_size])
+                chunks.extend(fixed_chunks)
+            else:
+                # 递归处理长段落
+                sub_chunks = chunk_text_by_strategy(
+                    segment,
+                    {"chunk_size": new_chunk_size, "overlap": new_overlap, "separators": new_separators}
+                )
+                chunks.extend(sub_chunks)
+            if new_chunk_size < 50:
+                # 强制按固定长度分割
+                fixed_chunks = []
+                for i in range(0, len(segment), chunk_size):
+                    fixed_chunks.append(segment[i:i + chunk_size])
+                chunks.extend(fixed_chunks)
+            else:
+                # 递归处理长段落
+                sub_chunks = chunk_text_by_strategy(
+                    segment,
+                    {"chunk_size": new_chunk_size, "overlap": new_overlap, "separators": new_separators}
+                )
+                chunks.extend(sub_chunks)
             continue
         
         # 检查是否需要开始新块

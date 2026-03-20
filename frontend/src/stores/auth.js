@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import api from './api'
+import { authApi } from '@/api'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('token') || '')
@@ -11,7 +11,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const login = async (credentials) => {
     try {
-      const res = await api.auth.login(credentials)
+      const res = await authApi.login(credentials)
       if (res.code === 200) {
         token.value = res.data.access_token
         refreshToken.value = res.data.refresh_token
@@ -22,7 +22,6 @@ export const useAuthStore = defineStore('auth', () => {
       }
       return { success: false, message: res.message }
     } catch (error) {
-      // 优先展示后端返回的 detail（如「用户名或密码错误」），否则用 axios 的 message
       const msg = error.response?.data?.detail ?? error.response?.data?.message ?? error.message
       return { success: false, message: typeof msg === 'string' ? msg : '登录失败，请检查用户名和密码' }
     }
@@ -30,7 +29,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const register = async (data) => {
     try {
-      const res = await api.auth.register(data)
+      const res = await authApi.register(data)
       return res
     } catch (error) {
       return { success: false, message: error.message }
@@ -39,7 +38,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const logout = async () => {
     try {
-      await api.auth.logout()
+      await authApi.logout()
     } catch (e) {}
     token.value = ''
     refreshToken.value = ''
@@ -50,9 +49,11 @@ export const useAuthStore = defineStore('auth', () => {
 
   const fetchUserInfo = async () => {
     try {
-      const res = await api.auth.me()
+      const res = await authApi.me()
+      console.log('fetchUserInfo response:', res)
       if (res.code === 200) {
         user.value = res.data
+        console.log('User info set:', user.value)
       }
     } catch (e) {
       console.error('获取用户信息失败', e)
@@ -61,7 +62,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const refreshAccessToken = async () => {
     try {
-      const res = await api.auth.refresh({ refresh_token: refreshToken.value })
+      const res = await authApi.refresh({ refresh_token: refreshToken.value })
       if (res.code === 200) {
         token.value = res.data.access_token
         refreshToken.value = res.data.refresh_token

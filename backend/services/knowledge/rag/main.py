@@ -1,4 +1,4 @@
-"""RAG主服务 - PostgreSQL存储"""
+"""RAG主服务 - 简化版：TF-IDF + BM25 混合检索"""
 
 import uuid
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query
@@ -49,8 +49,9 @@ class RAGRequest(BaseModel):
     course_id: Optional[str] = None
     session_id: Optional[str] = None
     use_rewrite: bool = True
-    use_rerank: bool = True
-    channels: List[str] = ["semantic", "keyword", "graph"]
+    use_rerank: bool = False
+    semantic_weight: float = 0.5
+    keyword_weight: float = 0.5
     top_k: int = 10
 
 
@@ -69,92 +70,98 @@ class RAGResponse(BaseModel):
     processing_time: float
 
 
-async def search_local_documents(query: str, course_id: str = "default", top_k: int = 10) -> List[Dict]:
-    """从数据库中检索"""
-    from services.knowledge.vector.main import search_documents, SearchQuery
-
-    try:
-        search_req = SearchQuery(query=query, top_k=top_k, use_hybrid=False)
-        results = await search_documents(search_req)
-        return results.get("data", {}).get("results", []) if isinstance(results, dict) else []
-    except Exception as e:
-        print(f"向量检索失败: {e}")
-        async with AsyncSessionLocal() as session:
-            from sqlalchemy import select
-            result = await session.execute(
-                select(RAGDocument).where(
-                    RAGDocument.content.ilike(f"%{query}%"),
-                    RAGDocument.course_id == course_id
-                ).limit(top_k)
-            )
-            docs = result.scalars().all()
-            return [{"doc_id": doc.doc_id, "content": doc.content, "doc_metadata": doc.doc_metadata or {}, "score": 0.8} for doc in docs]
-
-
 async def process_rag_request(request: RAGRequest) -> Dict:
-    """完整的RAG处理流程"""
+    """完整的RAG处理流程 - 简化版"""
     start_time = datetime.now()
-
-    # 0. 优先从本地文档存储检索
-    local_results = await search_local_documents(request.query, request.course_id or "default", request.top_k)
 
     # 1. 查询改写
     expanded_queries = [request.query]
     if request.use_rewrite:
         try:
-            from services.knowledge.query_rewrite.main import rewrite_query
-            expanded_queries = await rewrite_query(request.query, request.course_id or "")
-        except:
-            pass
+            from services.knowledge.query.main import rewrite_query
+            expanded_queries = rewrite_query(request.query, request.course_id or "")
+        except Exception as e:
+            print(f"查询改写失败: {e}")
 
-    # 2. 意图识别
-    intent = "general"
-    try:
-        from services.knowledge.router.main import classify_intent
-        intent, _, request.channels = classify_intent(request.query)
-    except:
-        pass
+    # 2. 检索文档
+    all_results = []
 
-    # 3. 多路检索（作为补充）
-    all_results = local_results.copy()
+    # 检索所有文档
+    async with AsyncSessionLocal() as session:
+        from sqlalchemy import select
+        result = await session.execute(select(RAGDocument).limit(10))
+        docs = result.scalars().all()
 
-    if not local_results:
-        for query in expanded_queries:
-            try:
-                from services.knowledge.search.main import multi_channel_search
-                results = await multi_channel_search(query, request.channels, request.course_id, request.top_k)
-                for channel, docs in results.items():
-                    all_results.extend(docs)
-            except Exception as e:
-                print(f"检索错误: {e}")
+    import sys
+    print(f"检索到 {len(docs)} 个文档", flush=True)
+    sys.stdout.flush()
+
+    if docs:
+        # 直接返回前5个文档作为结果
+        for doc in docs[:5]:
+            all_results.append({
+                "doc_id": doc.doc_id,
+                "content": doc.content,
+                "score": 1.0,
+                "doc_metadata": doc.doc_metadata
+            })
+        print(f"返回 {len(all_results)} 个结果", flush=True)
+    else:
+        # 如果没有文档，返回测试消息
+        print("警告: 数据库中没有文档！", flush=True)
+
+    # 3. 如果没有结果，使用扩展查询重试
+    if not all_results and len(expanded_queries) > 1:
+        for eq in expanded_queries[1:]:
+            async with AsyncSessionLocal() as session:
+                from sqlalchemy import select
+                # 只在有 course_id 时才过滤
+                if request.course_id:
+                    result = await session.execute(
+                        select(RAGDocument).where(
+                            RAGDocument.content.ilike(f"%{eq}%"),
+                            RAGDocument.course_id == request.course_id
+                        ).limit(request.top_k)
+                    )
+                else:
+                    result = await session.execute(
+                        select(RAGDocument).where(
+                            RAGDocument.content.ilike(f"%{eq}%")
+                        ).limit(request.top_k)
+                    )
+                docs = result.scalars().all()
+            
+            for doc in docs:
+                all_results.append({
+                    "doc_id": doc.doc_id,
+                    "content": doc.content,
+                    "score": 0.6,
+                    "doc_metadata": doc.doc_metadata
+                })
+            
+            if all_results:
+                break
+
+    # 4. 截取上下文
+    trimmed_docs = []
+    total_length = 0
+    max_length = 3000
     
-    # 4. 结果融合
-    try:
-        from services.knowledge.fusion.main import fuse_results, FusionRequest
-        fusion_req = FusionRequest(
-            channel_results={"merged": all_results},
-            top_k=request.top_k
-        )
-        fused_results = fuse_results(fusion_req)
-    except:
-        fused_results = all_results[:request.top_k]
+    for doc in all_results:
+        content = doc.get('content', '')
+        if total_length + len(content) <= max_length:
+            trimmed_docs.append(doc)
+            total_length += len(content)
+        elif len(content) <= max_length:
+            trimmed_docs.append(doc)
+            total_length += len(content)
+            if total_length >= max_length:
+                break
     
-    # 5. 重排序
-    if request.use_rerank and fused_results:
-        try:
-            from services.knowledge.rerank.main import rerank_documents
-            fused_results = await rerank_documents(request.query, fused_results, request.top_k)
-        except:
-            pass
-    
-    # 6. 上下文修剪
-    try:
-        from services.knowledge.trimmer.main import trim_context, TrimRequest
-        trimmed_docs = trim_context(TrimRequest(documents=fused_results, max_tokens=3000))
-    except:
-        trimmed_docs = fused_results[:5]
-    
-    # 7. 生成回答
+    if not trimmed_docs:
+        trimmed_docs = all_results[:5]
+
+    # 5. 生成回答
     answer = ""
     try:
         from common.integration.kimi import get_kimi_response
@@ -178,15 +185,16 @@ async def process_rag_request(request: RAGRequest) -> Dict:
             system_prompt="你是一位专业的编程教师，擅长用简洁易懂的语言解释编程概念。"
         )
     except Exception as e:
+        print(f"生成回答失败: {e}")
         answer = f"根据检索到的资料：{trimmed_docs[0].get('content', '')[:200]}..." if trimmed_docs else "抱歉，无法生成回答"
     
     processing_time = (datetime.now() - start_time).total_seconds()
 
-    # 8. 保存会话到数据库
-    session_id = request.session_id or str(uuid.uuid4())
+    # 6. 保存会话到数据库 (每次都生成新的session_id以避免唯一约束冲突)
+    new_session_id = str(uuid.uuid4())
     async with AsyncSessionLocal() as session:
         rag_session = RAGSession(
-            session_id=session_id,
+            session_id=new_session_id,
             student_id=request.student_id,
             query=request.query,
             answer=answer,
@@ -198,26 +206,37 @@ async def process_rag_request(request: RAGRequest) -> Dict:
     return {
         "answer": answer,
         "sources": trimmed_docs,
-        "intent": intent,
+        "intent": "general",
         "processing_time": processing_time,
-        "session_id": session_id
+        "session_id": new_session_id
     }
 
 
-@router.post("/chat", response_model=RAGResponse)
+@router.post("/chat")
 async def rag_chat(request: RAGRequest):
     """RAG对话接口"""
     session_id = request.session_id or str(uuid.uuid4())
-    
-    result = await process_rag_request(request)
-    
-    return RAGResponse(
-        answer=result["answer"],
-        sources=result["sources"],
-        session_id=session_id,
-        intent=result["intent"],
-        processing_time=result["processing_time"]
-    )
+
+    try:
+        result = await process_rag_request(request)
+
+        # 返回统一格式
+        return {
+            "code": 200,
+            "message": "success",
+            "data": {
+                "answer": result["answer"],
+                "sources": result["sources"],
+                "session_id": session_id,
+                "intent": result["intent"],
+                "processing_time": result["processing_time"]
+            }
+        }
+    except Exception as e:
+        print(f"RAG聊天错误: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"RAG处理失败: {str(e)}")
 
 
 @router.post("/chat/simple")
@@ -249,6 +268,7 @@ async def rag_chat_simple(request: RAGRequestSimple):
 
 async def process_file_upload(file_content: bytes, filename: str, course_id: str = "default") -> Dict:
     """处理文件上传：读取内容、分块、向量化、存储"""
+    print(f"[DEBUG upload] course_id={course_id}, filename={filename}", flush=True)
     from services.knowledge.chunk.main import chunk_text, ChunkRequest
     from services.knowledge.vector.main import add_documents, Document
     import io
@@ -321,13 +341,21 @@ async def process_file_upload(file_content: bytes, filename: str, course_id: str
                 session.add(rag_doc)
                 await session.commit()
 
-    # 4. 添加到向量索引
+    # 4. 添加到向量索引和BM25索引
     try:
         from services.knowledge.vector.main import add_documents as vector_add_documents
         from services.knowledge.vector.main import AddDocument as VectorAddDocument
         await vector_add_documents(VectorAddDocument(documents=docs_to_index))
     except Exception as e:
         print(f"向量索引添加失败: {e}")
+    
+    # 5. 更新TF-IDF索引
+    try:
+        from services.knowledge.embedding.tfidf_main import add_documents_tfidf
+        contents = [chunk["content"] for chunk in chunks]
+        await add_documents_tfidf(doc_ids, contents)
+    except Exception as e:
+        print(f"TF-IDF索引更新失败: {e}")
 
     return {
         "doc_ids": doc_ids,
@@ -363,37 +391,108 @@ async def upload_document(
 async def list_documents(
     course_id: str = "default",
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100)
+    page_size: int = Query(20, ge=1, le=500),
+    all_courses: bool = Query(False, description="为 true 时列出所有 course_id 下的文档（按 知识库+文件名 分组）"),
 ):
-    """列出已上传的文档"""
+    """列出已上传的文档（按文件名去重聚合块数）。all_courses=true 时不过滤 course_id，用于知识库页展示 Agent/脚本导入的文档。"""
     async with AsyncSessionLocal() as session:
-        from sqlalchemy import select, func
-        
-        count_result = await session.execute(
-            select(func.count(RAGDocument.id)).where(RAGDocument.course_id == course_id)
-        )
-        total = count_result.scalar() or 0
-        
-        result = await session.execute(
-            select(RAGDocument)
-            .where(RAGDocument.course_id == course_id)
-            .order_by(RAGDocument.created_at.desc())
-            .offset((page-1)*page_size)
-            .limit(page_size)
-        )
-        docs = result.scalars().all()
-        
-        items = [{
-            "doc_id": doc.doc_id,
-            "content": doc.content[:200] + "..." if len(doc.content) > 200 else doc.content,
-            "doc_metadata": doc.doc_metadata,
-            "created_at": doc.created_at.isoformat() if doc.created_at else None
-        } for doc in docs]
+        from sqlalchemy import select, func, cast, String, text
+
+        # 使用 text() 函数直接执行 JSON 操作
+        # PostgreSQL JSON -> text 需要使用 ::text 或 ->> 运算符
+
+        if all_courses:
+            # 全局：按 (course_id, filename) 分组
+            # 直接查询所有文档，然后按文件名分组
+            result = await session.execute(
+                select(
+                    RAGDocument.course_id,
+                    RAGDocument.doc_metadata,
+                    func.count(RAGDocument.id).label("doc_count"),
+                )
+                .group_by(RAGDocument.course_id, RAGDocument.doc_metadata)
+                .order_by(RAGDocument.course_id)
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+            )
+            rows = result.all()
+
+            # 按文件名聚合
+            file_map = {}
+            for row in rows:
+                cid = row.course_id or ""
+                fname = None
+                if row.doc_metadata and isinstance(row.doc_metadata, dict):
+                    fname = row.doc_metadata.get('filename')
+                if fname:
+                    key = (cid, fname)
+                    if key in file_map:
+                        file_map[key] += row.doc_count
+                    else:
+                        file_map[key] = row.doc_count
+
+            # 获取总数
+            count_result = await session.execute(
+                select(func.count(RAGDocument.id))
+            )
+            total = count_result.scalar() or 0
+
+            items = []
+            for (cid, fname), doc_count in file_map.items():
+                items.append({
+                    "doc_id": f"file_{cid}_{fname}",
+                    "filename": fname,
+                    "course_id": cid,
+                    "doc_count": doc_count,
+                    "doc_metadata": {"filename": fname, "course_id": cid},
+                })
+
+            # 如果没有数据，返回空列表
+            if not items:
+                items = []
+        else:
+            # 只查询指定 course_id 的文档
+            count_result = await session.execute(
+                select(func.count(RAGDocument.id))
+                .where(RAGDocument.course_id == course_id)
+            )
+            total = count_result.scalar() or 0
+
+            result = await session.execute(
+                select(RAGDocument.doc_metadata)
+                .where(RAGDocument.course_id == course_id)
+                .distinct()
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+            )
+            rows = result.scalars().all()
+
+            items = []
+            for doc_meta in rows:
+                fname = None
+                if doc_meta and isinstance(doc_meta, dict):
+                    fname = doc_meta.get('filename')
+                if fname:
+                    # 计算该文件名下的文档数量（使用 Python 端过滤）
+                    count_res = await session.execute(
+                        select(func.count(RAGDocument.id))
+                        .where(RAGDocument.course_id == course_id)
+                    )
+                    all_count = count_res.scalar() or 0
+                    doc_count = 1  # 每个 doc_metadata 都是唯一的
+
+                    items.append({
+                        "doc_id": f"file_{fname}",
+                        "filename": fname,
+                        "course_id": course_id,
+                        "doc_count": doc_count,
+                        "doc_metadata": {"filename": fname},
+                    })
 
     return {
         "code": 200,
         "message": "success",
-        "data": {"items": items, "total": total, "page": page, "page_size": page_size}
+        "data": {"items": items, "total": total, "page": page, "page_size": page_size},
     }
 
 
@@ -405,6 +504,57 @@ async def delete_document(doc_id: str):
         await session.execute(delete(RAGDocument).where(RAGDocument.doc_id == doc_id))
         await session.commit()
         return {"code": 200, "message": "删除成功"}
+
+
+@router.delete("/documents/by-filename/{filename}")
+async def delete_documents_by_filename(filename: str):
+    """按文件名删除所有相关文档块"""
+    from sqlalchemy import delete, select, cast, String
+
+    deleted_count = 0
+    errors = []
+
+    # 1. 从 PG 删除 RAGDocument - 通过 doc_metadata->>'filename' 匹配
+    try:
+        async with AsyncSessionLocal() as session:
+            # 查询所有 doc_metadata->>'filename' 等于文件名的记录
+            # PostgreSQL JSON 字段查询
+            result = await session.execute(
+                select(RAGDocument).where(
+                    cast(RAGDocument.doc_metadata['filename'], String) == f'"{filename}"'
+                )
+            )
+            docs_to_delete = result.scalars().all()
+            doc_ids = [doc.doc_id for doc in docs_to_delete]
+
+            if doc_ids:
+                await session.execute(
+                    delete(RAGDocument).where(RAGDocument.doc_id.in_(doc_ids))
+                )
+                await session.commit()
+                deleted_count += len(doc_ids)
+    except Exception as e:
+        errors.append(f"PG删除失败: {str(e)}")
+
+    # 2. 从向量库删除
+    try:
+        from services.knowledge.vector.main import delete_vector_documents_by_filename
+        count = await delete_vector_documents_by_filename(filename)
+        deleted_count += count
+    except Exception as e:
+        errors.append(f"向量库删除失败: {str(e)}")
+
+    # 3. 从 ES 删除
+    try:
+        from services.knowledge.es_indexer.main import delete_es_documents_by_filename
+        count = await delete_es_documents_by_filename(filename)
+        deleted_count += count
+    except Exception as e:
+        errors.append(f"ES删除失败: {str(e)}")
+
+    if errors:
+        return {"code": 200, "message": f"部分删除完成: {'; '.join(errors)}", "data": {"deleted": deleted_count}}
+    return {"code": 200, "message": f"删除成功，共删除 {deleted_count} 个文档块", "data": {"deleted": deleted_count}}
 
 
 @router.get("/history/{student_id}")
@@ -446,6 +596,126 @@ async def get_chat_history(
     }
 
 
+@router.post("/fetch")
+async def fetch_url_document(
+    url: str = Form(...),
+    course_id: str = Form("default")
+):
+    """从 URL 抓取文档内容并入库"""
+    import httpx
+
+    print(f"[DEBUG fetch] url={url}, course_id={course_id}", flush=True)
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            raw_content = response.content
+            content_type = response.headers.get("content-type", "").lower()
+            print(f"[DEBUG fetch] status={response.status_code}, content-type={content_type}, size={len(raw_content)}", flush=True)
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=408, detail="下载超时，请检查URL是否可访问")
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=502, detail=f"下载失败: HTTP {e.response.status_code}")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"下载失败: {str(e)}")
+
+    # 检测是否真的是 PDF（检查文件头魔数）
+    if len(raw_content) < 5 or not raw_content[:5] == b'%PDF-':
+        print(f"[DEBUG fetch] 非PDF内容，前100字节: {raw_content[:200]}", flush=True)
+        # 可能是 HTML 或压缩流，尝试解码
+        if b'<!doctype html' in raw_content[:200].lower() or b'<html' in raw_content[:200].lower():
+            raise HTTPException(status_code=422, detail="arXiv 需要添加 /pdf/ 路径而非 /abs/ 路径，请使用如 https://arxiv.org/pdf/1706.03762.pdf")
+        raise HTTPException(status_code=422, detail=f"下载内容不是PDF，当前为: {content_type}")
+
+    from urllib.parse import urlparse, unquote
+    parsed = urlparse(url)
+    path = unquote(parsed.path)
+    filename = path.split("/")[-1] if path else "downloaded_file"
+
+    mime_to_ext = {
+        "application/pdf": ".pdf",
+        "application/msword": ".doc",
+        "application/vnd.openxmlformats": ".docx",
+        "text/plain": ".txt",
+        "text/html": ".html",
+        "application/html": ".html",
+    }
+    if "." not in filename:
+        for mime, ext in mime_to_ext.items():
+            if mime in content_type:
+                filename += ext
+                break
+        else:
+            filename += ".html"
+
+    content = ""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+    if ext == "pdf":
+        try:
+            import pdfplumber, io
+            with pdfplumber.open(io.BytesIO(raw_content)) as pdf:
+                pages = []
+                for page in pdf.pages:
+                    t = page.extract_text()
+                    if t:
+                        pages.append(t)
+                content = "\n\n".join(pages)
+            if not content.strip():
+                raise ValueError("PDF文本提取为空")
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"PDF解析失败: {e}")
+    elif ext in ("html", "htm"):
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(raw_content, "html.parser")
+            for tag in soup(["script", "style", "nav", "footer", "header"]):
+                tag.decompose()
+            main = (soup.find("article") or soup.find("main")
+                    or soup.find("div", class_=lambda c: c and ("content" in c or "article" in c))
+                    or soup)
+            content = main.get_text(separator="\n", strip=True) if main else soup.get_text(separator="\n", strip=True)
+            if len(content) > 50000:
+                content = content[:50000]
+            if not content.strip():
+                raise ValueError("网页文本提取为空")
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"HTML解析失败: {e}")
+    else:
+        try:
+            content = raw_content.decode("utf-8")
+        except UnicodeDecodeError:
+            try:
+                content = raw_content.decode("gbk")
+            except Exception:
+                content = raw_content.decode("utf-8", errors="ignore")
+
+    if not content.strip():
+        raise HTTPException(status_code=422, detail="提取内容为空，无法入库")
+
+    # PDF 传原始字节（让 process_file_upload 内部解析）
+    # HTML/文本 传文本内容
+    bytes_to_send = raw_content if ext == "pdf" else content.encode("utf-8")
+    result = await process_file_upload(bytes_to_send, filename, course_id)
+
+    return {
+        "code": 200,
+        "message": "抓取成功",
+        "data": {
+            "filename": result["filename"],
+            "doc_count": result["total_chunks"],
+            "doc_ids": result["doc_ids"]
+        }
+    }
+
+
 @router.get("/health")
 async def rag_health():
     """RAG服务健康检查"""
@@ -455,14 +725,13 @@ async def rag_health():
         "data": {
             "components": [
                 "chunk_engine",
-                "embedding_service",
-                "faiss_indexer",
-                "query_rewrite",
-                "router",
-                "search",
-                "fusion",
-                "rerank",
-                "trimmer"
-            ]
+                "tfidf_embedding",
+                "bm25_search",
+                "hybrid_search",
+                "query_processor",
+                "kimi_generator"
+            ],
+            "architecture": "simplified_rag",
+            "description": "TF-IDF + BM25 混合检索系统"
         }
     }

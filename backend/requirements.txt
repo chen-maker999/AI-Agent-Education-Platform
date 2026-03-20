@@ -20,6 +20,7 @@ python-multipart==0.0.6
 # API & HTTP
 aiohttp==3.9.1
 httpx==0.26.0
+beautifulsoup4==4.12.3
 pydantic==2.5.3
 pydantic-settings==2.1.0
 email-validator==2.1.0.post1
@@ -38,10 +39,22 @@ minio==7.2.0
 aiokafka==0.10.0
 pika==1.3.2
 
+# PDF Processing
+pdfplumber==0.10.3
+
+# Vector Search & NLP
+faiss-cpu==1.7.4
+numpy==1.26.3
+jieba==0.42.1
+scikit-learn==1.4.0
+
 # Utilities
 python-dotenv==1.0.0
 python-dateutil==2.8.2
 pytz==2023.3.post1
+
+# PDF Generation
+reportlab==4.0.9
 
 # Dev & Testing
 pytest==7.4.4

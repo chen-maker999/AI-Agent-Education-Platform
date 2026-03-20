@@ -146,6 +146,21 @@ async def delete_document(doc_id: str):
         await session.commit()
         return {"code": 200, "message": "文档删除成功"}
 
+
+async def delete_vector_documents_by_filename(filename: str):
+    """按文件名删除向量文档"""
+    from sqlalchemy import delete, select
+    async with AsyncSessionLocal() as session:
+        # 查询匹配的文档
+        result = await session.execute(select(VectorDocument).where(VectorDocument.doc_id.like(f"%{filename}%")))
+        docs = result.scalars().all()
+        doc_ids = [doc.doc_id for doc in docs]
+        if doc_ids:
+            await session.execute(delete(VectorDocument).where(VectorDocument.doc_id.in_(doc_ids)))
+            await session.commit()
+        return len(doc_ids)
+
+
 @router.get("/documents")
 async def list_documents(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)):
     async with AsyncSessionLocal() as session:

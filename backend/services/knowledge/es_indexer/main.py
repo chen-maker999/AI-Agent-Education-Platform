@@ -321,19 +321,46 @@ async def fallback_search(request: ESSearchRequest) -> List[Dict]:
 async def delete_document(doc_id: str) -> bool:
     """删除文档"""
     global es_client, es_available, es_fallback_storage
-    
+
     if es_available:
         try:
             es_client.delete(index=INDEX_NAME, id=doc_id, ignore=[404])
             return True
         except Exception as e:
             print(f"ES删除失败: {e}")
-    
+
     if doc_id in es_fallback_storage:
         del es_fallback_storage[doc_id]
         return True
-    
+
     return False
+
+
+async def delete_es_documents_by_filename(filename: str) -> int:
+    """按文件名删除 ES 文档"""
+    global es_client, es_available, es_fallback_storage
+
+    deleted_count = 0
+
+    if es_available:
+        try:
+            # 使用 match 查询找到所有匹配的文档
+            query = {"query": {"match": {"doc_id": filename}}}
+            result = es_client.search(index=INDEX_NAME, body=query, size=1000)
+            hits = result.get("hits", {}).get("hits", [])
+            for hit in hits:
+                es_client.delete(index=INDEX_NAME, id=hit["_id"], ignore=[404])
+                deleted_count += 1
+        except Exception as e:
+            print(f"ES按文件名删除失败: {e}")
+
+    # 也删除 fallback 存储中的匹配项
+    keys_to_delete = [k for k in es_fallback_storage.keys() if filename in k]
+    for key in keys_to_delete:
+        del es_fallback_storage[key]
+        deleted_count += 1
+
+    return deleted_count
 
 
 @router.post("/index", status_code=201)

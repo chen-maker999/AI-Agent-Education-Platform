@@ -5,15 +5,162 @@
       <div class="header-content">
         <div class="header-text">
           <h1>作业管理</h1>
-          <p v-if="isTeacher">上传、管理和批改学生作业</p>
+          <p v-if="isTeacher">上传、管理和批改学生作业，生成练习文件</p>
           <p v-else>查看和提交作业</p>
         </div>
         <div class="header-actions">
-          <button class="btn btn-primary" @click="showUploadModal = true" v-if="!isTeacher">
+          <button class="btn btn-secondary" @click="showGenerateModal = true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
+            </svg>
+            生成练习
+          </button>
+          <button class="btn btn-primary" @click="showUploadModal = true">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
             提交作业
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 生成练习弹窗 -->
+    <div v-if="showGenerateModal" class="modal-overlay" @click.self="showGenerateModal = false">
+      <div class="modal-content modal-large">
+        <div class="modal-header">
+          <h3>生成练习文件</h3>
+          <button class="close-btn" @click="showGenerateModal = false">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>练习标题</label>
+            <input type="text" v-model="generateForm.title" placeholder="输入练习标题（可选）" class="input-field">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>知识库/课程</label>
+              <select v-model="generateForm.course_id" class="input-field">
+                <option value="">选择知识库</option>
+                <option v-for="kb in knowledgeBases" :key="kb.kb_id" :value="kb.kb_id">
+                  {{ kb.name || kb.kb_id }}
+                </option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>题目数量</label>
+              <select v-model="generateForm.exercise_count" class="input-field">
+                <option :value="5">5题</option>
+                <option :value="10">10题</option>
+                <option :value="15">15题</option>
+                <option :value="20">20题</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>难度级别</label>
+              <div class="radio-group">
+                <label class="radio-item">
+                  <input type="radio" v-model="generateForm.difficulty" value="easy">
+                  <span>简单</span>
+                </label>
+                <label class="radio-item">
+                  <input type="radio" v-model="generateForm.difficulty" value="medium">
+                  <span>中等</span>
+                </label>
+                <label class="radio-item">
+                  <input type="radio" v-model="generateForm.difficulty" value="hard">
+                  <span>困难</span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>题型（可多选）</label>
+            <div class="checkbox-group">
+              <label class="checkbox-item">
+                <input type="checkbox" v-model="generateForm.exercise_types" value="choice">
+                <span>选择题</span>
+              </label>
+              <label class="checkbox-item">
+                <input type="checkbox" v-model="generateForm.exercise_types" value="blank">
+                <span>填空题</span>
+              </label>
+              <label class="checkbox-item">
+                <input type="checkbox" v-model="generateForm.exercise_types" value="short_answer">
+                <span>简答题</span>
+              </label>
+              <label class="checkbox-item">
+                <input type="checkbox" v-model="generateForm.exercise_types" value="coding">
+                <span>编程题</span>
+              </label>
+            </div>
+          </div>
+          <div class="info-box">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+            </svg>
+            <p>练习将根据所选知识库的文档内容自动生成，生成后可在下方查看并下载PDF文件。</p>
+          </div>
+          <div v-if="generating" class="generating-tip">
+            <div class="spinner"></div>
+            <span>正在生成练习，请稍候...</span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="showGenerateModal = false">取消</button>
+          <button class="btn btn-outline" @click="generateInBackground" :disabled="generating || !generateForm.course_id">
+            {{ generating ? '生成中...' : '后台生成' }}
+          </button>
+          <button class="btn btn-primary" @click="generateWorksheet" :disabled="generating || !generateForm.course_id">
+            {{ generating ? '生成中...' : '立即生成' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 练习预览弹窗 -->
+    <div v-if="showPreviewModal" class="modal-overlay" @click.self="showPreviewModal = false">
+      <div class="modal-content modal-preview">
+        <div class="modal-header">
+          <h3>{{ previewData.title || '练习预览' }}</h3>
+          <button class="close-btn" @click="showPreviewModal = false">&times;</button>
+        </div>
+        <div class="modal-body preview-body">
+          <div v-if="previewLoading" class="preview-loading">
+            <div class="spinner"></div>
+            <span>加载中...</span>
+          </div>
+          <template v-else>
+          <div class="preview-info">
+            <span class="info-tag">{{ previewData.exercise_count || 0 }}题</span>
+            <span class="info-tag difficulty-tag">{{ getDifficultyText(previewData.difficulty) }}</span>
+          </div>
+          <div class="exercise-list">
+            <div v-for="(ex, idx) in previewData.exercises" :key="idx" class="exercise-item">
+              <div class="exercise-header">
+                <span class="exercise-num">{{ idx + 1 }}.</span>
+                <span class="exercise-type">[{{ getExerciseTypeName(ex.exercise_type) }}]</span>
+              </div>
+              <div class="exercise-question">{{ ex.question }}</div>
+              <div v-if="ex.options" class="exercise-options">
+                <div v-for="(opt, optIdx) in ex.options" :key="optIdx" class="option-item">{{ opt }}</div>
+              </div>
+              <div class="exercise-answer">
+                <strong>答案：</strong>{{ ex.answer }}
+              </div>
+            </div>
+          </div>
+          </template>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="showPreviewModal = false">关闭</button>
+          <button class="btn btn-primary" @click="downloadWorksheet(previewData.worksheet_id)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            下载PDF
           </button>
         </div>
       </div>
@@ -47,6 +194,10 @@
             <span class="tab-dot" v-if="filter === 'reviewed'"></span>
             已批改
           </button>
+          <button :class="['tab-modern', { active: filter === 'worksheets' }]" @click="filter = 'worksheets'; loadWorksheets()">
+            <span class="tab-dot" v-if="filter === 'worksheets'"></span>
+            练习文件
+          </button>
         </div>
         <div class="search-box-modern">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -57,7 +208,8 @@
       </div>
 
       <div class="homework-table-modern">
-        <table>
+        <!-- 作业列表 -->
+        <table v-if="filter !== 'worksheets'">
           <thead>
             <tr>
               <th>文件名</th>
@@ -119,6 +271,73 @@
             </tr>
           </tbody>
         </table>
+
+        <!-- 练习文件列表 -->
+        <table v-else>
+          <thead>
+            <tr>
+              <th>标题</th>
+              <th>课程</th>
+              <th>题目数</th>
+              <th>题型</th>
+              <th>难度</th>
+              <th>创建时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="ws in worksheetList" :key="ws.worksheet_id">
+              <td>
+                <div class="file-info">
+                  <div class="file-icon-wrapper worksheet-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+                    </svg>
+                  </div>
+                  <span class="file-name">{{ ws.title }}</span>
+                </div>
+              </td>
+              <td><span class="course-tag">{{ ws.course || '通用' }}</span></td>
+              <td>{{ ws.exercise_count }}题</td>
+              <td>
+                <span class="exercise-type-tag">{{ formatExerciseType(ws.exercise_type) }}</span>
+              </td>
+              <td>
+                <span :class="['difficulty-badge', ws.difficulty]">
+                  {{ getDifficultyText(ws.difficulty) }}
+                </span>
+              </td>
+              <td class="time-cell">{{ formatDate(ws.created_at) }}</td>
+              <td>
+                <div class="action-buttons-modern">
+                  <button class="action-btn-modern preview" @click="previewWorksheet(ws)" title="预览">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  </button>
+                  <button class="action-btn-modern" @click="downloadWorksheet(ws.worksheet_id)" title="下载">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                  </button>
+                  <button class="action-btn-modern delete" @click="deleteWorksheet(ws.worksheet_id)" title="删除" v-if="isTeacher">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="worksheetList.length === 0">
+              <td colspan="7" class="empty-cell">
+                <div class="empty-state-inline">
+                  <p>暂无练习文件</p>
+                  <button class="btn-link" @click="showGenerateModal = true">点击生成</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -168,7 +387,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { homeworkApi } from '@/api'
+import { homeworkApi, worksheetApi, ragApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
 
@@ -192,6 +411,11 @@ const UploadIcon = {
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
   </svg>`
 }
+const WorksheetIcon = {
+  template: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
+  </svg>`
+}
 
 const authStore = useAuthStore()
 const isTeacher = computed(() => authStore.user?.role === 'teacher' || authStore.user?.role === 'admin')
@@ -202,6 +426,23 @@ const showUploadModal = ref(false)
 const selectedFile = ref(null)
 const uploading = ref(false)
 const uploadForm = ref({ course: '', note: '' })
+
+// 练习文件相关状态
+const showGenerateModal = ref(false)
+const showPreviewModal = ref(false)
+const generating = ref(false)
+const previewLoading = ref(false)
+const knowledgeBases = ref([])
+const worksheetList = ref([])
+const previewData = ref({})
+
+const generateForm = ref({
+  title: '',
+  course_id: '',
+  exercise_count: 5,
+  difficulty: 'medium',
+  exercise_types: ['choice']
+})
 
 const stats = ref([
   { title: '总作业数', value: '0', icon: 'BookIcon', gradient: 'linear-gradient(135deg, #6366f1, #8b5cf6)' },
@@ -256,6 +497,7 @@ const updateStats = () => {
 onMounted(() => {
   loadHomeworkList()
   loadStats()
+  loadKnowledgeBases()
 })
 
 const filteredHomework = computed(() => {
@@ -337,6 +579,271 @@ const deleteHomework = async (hw) => {
     ElMessage.error('删除失败')
   }
 }
+
+// ==================== 练习文件相关方法 ====================
+
+// 加载知识库列表 - 从 RAG 知识库获取文档
+const loadKnowledgeBases = async () => {
+  try {
+    const res = await ragApi.listDocuments('default', { allCourses: true })
+    if (res.code === 200) {
+      const items = res.data?.items || []
+      // 按课程分组
+      const courseMap = new Map()
+      items.forEach(item => {
+        const courseId = item.course_id || 'default'
+        if (!courseMap.has(courseId)) {
+          courseMap.set(courseId, {
+            kb_id: courseId,
+            name: courseId === 'default' ? '默认知识库' : courseId,
+            doc_count: 0
+          })
+        }
+        const course = courseMap.get(courseId)
+        course.doc_count += item.doc_count || 1
+      })
+      knowledgeBases.value = Array.from(courseMap.values())
+    }
+  } catch (error) {
+    console.error('加载知识库失败:', error)
+    knowledgeBases.value = [{ kb_id: 'default', name: '默认知识库', doc_count: 0 }]
+  }
+}
+
+// 加载练习文件列表
+const loadWorksheets = async (courseId = null) => {
+  try {
+    const params = { page: 1, page_size: 100 }
+    if (courseId) {
+      params.course_id = courseId
+    }
+    console.log('[Homework] 加载练习文件, params:', params)
+    const res = await worksheetApi.list(params)
+    console.log('[Homework] 练习文件返回:', res)
+    if (res.code === 200) {
+      worksheetList.value = res.data?.items || []
+      console.log('[Homework] 设置 worksheetList:', worksheetList.value.length, '条')
+    }
+  } catch (error) {
+    console.error('加载练习文件失败:', error)
+    worksheetList.value = []
+  }
+}
+
+// 生成练习文件
+const generateWorksheet = async () => {
+  if (!generateForm.value.course_id) {
+    ElMessage.warning('请选择知识库')
+    return
+  }
+  if (generateForm.value.exercise_types.length === 0) {
+    ElMessage.warning('请至少选择一种题型')
+    return
+  }
+
+  generating.value = true
+  try {
+    const userId = authStore.user?.id || authStore.user?.user_id || 'default'
+    const payload = {
+      course_id: generateForm.value.course_id,
+      title: generateForm.value.title || `练习题_${new Date().toLocaleDateString()}`,
+      exercise_count: generateForm.value.exercise_count,
+      difficulty: generateForm.value.difficulty,
+      exercise_types: generateForm.value.exercise_types,
+      created_by: userId
+    }
+    console.log('[Homework] 开始生成练习, payload:', payload)
+    const res = await worksheetApi.generate(payload)
+    console.log('[Homework] 生成练习返回:', res)
+
+    if (res.code === 200) {
+      ElMessage.success('练习文件生成成功')
+      showGenerateModal.value = false
+      // 重置表单
+      const selectedCourse = generateForm.value.course_id
+      generateForm.value = {
+        title: '',
+        course_id: selectedCourse,
+        exercise_count: 5,
+        difficulty: 'medium',
+        exercise_types: ['choice']
+      }
+      // 切换到练习文件标签并刷新列表
+      filter.value = 'worksheets'
+      // 使用 nextTick 确保 DOM 更新后再刷新
+      setTimeout(() => {
+        loadWorksheets(selectedCourse)
+      }, 100)
+    } else {
+      ElMessage.error(res.message || '生成失败')
+    }
+  } catch (error) {
+    console.error('生成练习失败:', error)
+    ElMessage.error(error.response?.data?.detail || error.message || '生成失败')
+  } finally {
+    generating.value = false
+  }
+}
+
+// 后台生成练习（不阻塞，可关闭弹窗）
+const generateInBackground = async () => {
+  if (!generateForm.value.course_id) {
+    ElMessage.warning('请选择知识库')
+    return
+  }
+  if (generateForm.value.exercise_types.length === 0) {
+    ElMessage.warning('请至少选择一种题型')
+    return
+  }
+
+  generating.value = true
+  const selectedCourse = generateForm.value.course_id
+
+  try {
+    const userId = authStore.user?.id || authStore.user?.user_id || 'default'
+    const payload = {
+      course_id: generateForm.value.course_id,
+      title: generateForm.value.title || `练习题_${new Date().toLocaleDateString()}`,
+      exercise_count: generateForm.value.exercise_count,
+      difficulty: generateForm.value.difficulty,
+      exercise_types: generateForm.value.exercise_types,
+      created_by: userId
+    }
+
+    // 关闭弹窗
+    showGenerateModal.value = false
+    ElMessage.info('练习正在后台生成中，完成后会显示在列表中')
+
+    // 重置表单
+    generateForm.value = {
+      title: '',
+      course_id: selectedCourse,
+      exercise_count: 5,
+      difficulty: 'medium',
+      exercise_types: ['choice']
+    }
+
+    // 发送请求但不等待结果
+    worksheetApi.generate(payload).then(res => {
+      if (res.code === 200) {
+        ElMessage.success('练习文件生成成功')
+        // 刷新列表
+        loadWorksheets(selectedCourse)
+      } else {
+        ElMessage.error(res.message || '生成失败')
+      }
+      generating.value = false
+    }).catch(error => {
+      console.error('后台生成失败:', error)
+      ElMessage.error(error.response?.data?.detail || error.message || '生成失败')
+      generating.value = false
+    })
+  } catch (error) {
+    console.error('后台生成失败:', error)
+    ElMessage.error('后台生成失败')
+    generating.value = false
+  }
+}
+
+// 预览练习
+const previewWorksheet = async (ws) => {
+  previewLoading.value = true
+  showPreviewModal.value = true
+  previewData.value = {}
+  try {
+    const res = await worksheetApi.preview(ws.worksheet_id)
+    if (res.code === 200) {
+      previewData.value = res.data
+    }
+  } catch (error) {
+    console.error('预览失败:', error)
+    ElMessage.error('预览失败')
+    showPreviewModal.value = false
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+// 下载练习文件
+const downloadWorksheet = async (worksheetId) => {
+  try {
+    const response = await worksheetApi.download(worksheetId)
+    // 创建下载链接
+    const blob = new Blob([response], { type: 'application/pdf' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `练习题_${worksheetId}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('下载成功')
+  } catch (error) {
+    console.error('下载失败:', error)
+    // 尝试通过URL直接打开
+    ElMessage.info('正在打开下载链接...')
+    window.open(`/api/v1/worksheet/${worksheetId}/download`, '_blank')
+  }
+}
+
+// 删除练习文件
+const deleteWorksheet = async (worksheetId) => {
+  try {
+    await worksheetApi.delete(worksheetId)
+    ElMessage.success('删除成功')
+    loadWorksheets()
+  } catch (error) {
+    console.error('删除失败:', error)
+    ElMessage.error('删除失败')
+  }
+}
+
+// 格式化题型
+const formatExerciseType = (type) => {
+  if (!type) return '-'
+  const typeMap = {
+    'choice': '选择',
+    'blank': '填空',
+    'short_answer': '简答',
+    'coding': '编程'
+  }
+  return type.split('/').map(t => typeMap[t] || t).join('/')
+}
+
+// 获取题型名称
+const getExerciseTypeName = (type) => {
+  const typeMap = {
+    'choice': '选择题',
+    'blank': '填空题',
+    'short_answer': '简答题',
+    'coding': '编程题'
+  }
+  return typeMap[type] || '题目'
+}
+
+// 获取难度文本
+const getDifficultyText = (difficulty) => {
+  const map = {
+    'easy': '简单',
+    'medium': '中等',
+    'hard': '困难'
+  }
+  return map[difficulty] || '中等'
+}
+
+// 格式化日期
+const formatDate = (dateStr) => {
+  if (!dateStr) return '-'
+  const date = new Date(dateStr)
+  return date.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
 </script>
 
 <style scoped>
@@ -396,6 +903,17 @@ const deleteHomework = async (hw) => {
 .header-text p {
   color: rgba(255,255,255,0.85);
   font-size: 15px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.header-actions .btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  min-width: 100px;
 }
 
 .header-actions .btn-primary {
@@ -459,6 +977,358 @@ const deleteHomework = async (hw) => {
 .stat-label {
   font-size: 14px;
   color: #64748b;
+}
+
+/* 练习文件图标 */
+.worksheet-icon {
+  background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+}
+
+/* 练习文件表格样式 */
+.exercise-type-tag {
+  padding: 4px 10px;
+  background: #f3f4f6;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.difficulty-badge {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.difficulty-badge.easy {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.difficulty-badge.medium {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.difficulty-badge.hard {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* 空状态 */
+.empty-state-inline {
+  padding: 40px;
+  text-align: center;
+}
+
+.empty-state-inline p {
+  color: #9ca3af;
+  margin-bottom: 8px;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: #3b82f6;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
+.empty-cell {
+  padding: 20px;
+}
+
+/* 大尺寸弹窗 */
+.modal-large {
+  max-width: 600px;
+}
+
+.modal-preview {
+  max-width: 800px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.preview-body {
+  overflow-y: auto;
+  max-height: calc(90vh - 150px);
+}
+
+.preview-info {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.info-tag {
+  padding: 6px 14px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #4b5563;
+}
+
+.difficulty-tag {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+/* 预览加载样式 */
+.preview-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 60px;
+  color: #666;
+}
+
+.preview-loading .spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid #667eea30;
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* 练习列表样式 */
+.exercise-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.exercise-item {
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+}
+
+.exercise-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.exercise-num {
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.exercise-type {
+  font-size: 12px;
+  color: #6b7280;
+  background: #e5e7eb;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.exercise-question {
+  font-size: 14px;
+  color: #374151;
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+
+.exercise-options {
+  margin-left: 10px;
+}
+
+.option-item {
+  font-size: 13px;
+  color: #4b5563;
+  padding: 4px 0;
+}
+
+.exercise-answer {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #e5e7eb;
+  font-size: 13px;
+  color: #059669;
+}
+
+/* 生成提示样式 */
+.generating-tip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #667eea20, #764ba220);
+  border: 1px solid #667eea40;
+  border-radius: 8px;
+  color: #667eea;
+  font-size: 14px;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #667eea30;
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 表单样式 */
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #374151;
+}
+
+.input-field {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 14px;
+  transition: all 0.2s;
+  background: white;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+}
+
+/* 单选按钮组 */
+.radio-group {
+  display: flex;
+  gap: 20px;
+}
+
+.radio-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #4b5563;
+}
+
+.radio-item input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* 复选框组 */
+.checkbox-group {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #4b5563;
+  padding: 8px 14px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s;
+}
+
+.checkbox-item:hover {
+  border-color: #3b82f6;
+}
+
+.checkbox-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.checkbox-item input:checked + span {
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+/* 信息提示框 */
+.info-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  background: #eff6ff;
+  border-radius: 10px;
+  border: 1px solid #bfdbfe;
+}
+
+.info-box svg {
+  color: #3b82f6;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.info-box p {
+  font-size: 13px;
+  color: #1e40af;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* 预览按钮样式 */
+.action-btn-modern.preview {
+  color: #8b5cf6;
+}
+
+.action-btn-modern.preview:hover {
+  border-color: #8b5cf6;
+  color: #8b5cf6;
+  background: #f5f3ff;
+}
+
+/* 按钮次要样式 */
+.btn-secondary {
+  background: white;
+  color: #4b5563;
+  border: 1px solid #e5e7eb;
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-secondary:hover {
+  border-color: #3b82f6;
+  color: #3b82f6;
+  background: #f0f7ff;
 }
 
 /* 内容卡片 - 现代风格 */
@@ -932,6 +1802,21 @@ const deleteHomework = async (hw) => {
 .btn-secondary:hover {
   background: #e2e8f0;
   color: #1a1a2e;
+}
+
+.btn-outline {
+  background: transparent;
+  color: #667eea;
+  border: 1px solid #667eea;
+}
+
+.btn-outline:hover {
+  background: #667eea10;
+}
+
+.btn-outline:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 @media (max-width: 1200px) {

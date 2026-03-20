@@ -1,0 +1,12 @@
+[
+  {
+    "role": "user",
+    "content": "下载transformer论文到知识库",
+    "time": "2026-03-19T07:20:50.181456"
+  },
+  {
+    "role": "assistant",
+    "content": "我已经找到了一个链接到arXiv.org上名为“Attention Is All You Need”的Transformer论文。请问您希望我将这篇论文保存到知识库中的哪个路径？",
+    "time": "2026-03-19T07:21:10.866488"
+  }
+]

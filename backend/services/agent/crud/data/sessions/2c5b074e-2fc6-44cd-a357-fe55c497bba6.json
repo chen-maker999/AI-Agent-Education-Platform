@@ -1,0 +1,12 @@
+[
+  {
+    "role": "user",
+    "content": "下载LLM的论文到知识库，文件名就用下载下来的文件名",
+    "time": "2026-03-19T08:25:35.910626"
+  },
+  {
+    "role": "assistant",
+    "content": "LLM的论文《Attention Is All You Need》已经成功下载并保存到了知识库中，文件名为“Attention Is All You Need.pdf”。如果您需要进一步查看或引用该论文，请随时告知。",
+    "time": "2026-03-19T08:25:46.456406"
+  }
+]

@@ -1,5 +1,6 @@
 """INTELLIGENCE - Chat service with PostgreSQL storage and real RAG."""
 
+import json
 import uuid
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -66,6 +67,7 @@ class ChatRequest(BaseModel):
     message: str
     mode: str = "general"  # "general" 通用问答 | "learning" 学习问答
     context: Dict[str, Any] = {}
+    tools: Optional[List[Dict[str, Any]]] = None  # 支持 Function Calling
 
 
 class FeedbackRequest(BaseModel):
@@ -200,25 +202,50 @@ async def retrieve_knowledge(query: str, course_id: str = None, top_k: int = 3) 
         return knowledge_results[:top_k]
 
 
-async def generate_response_with_kimi(query: str, context: List[Dict], student_id: str, mode: str = "general") -> str:
-    """使用Kimi API生成回答。"""
-    from common.integration.kimi import get_kimi_response
+async def generate_response_with_kimi(
+    query: str,
+    context: List[Dict],
+    student_id: str,
+    mode: str = "general",
+    tools: Optional[List[Dict[str, Any]]] = None,
+    history: Optional[List[Dict[str, str]]] = None,
+    current_turn_messages: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """使用Kimi API生成回答。返回 {"type": "message"|"tool_calls", "content"|"tool_calls": ...}
+    history: 本会话的历史消息（不含当前轮），用于上下文关联。
+    current_turn_messages: 当前轮已产生的消息（如 user + assistant tool_calls + tool），用于工具调用续写时传入。
+    """
+    from common.integration.kimi import kimi_client
 
     try:
-        if mode == "general" or not context:
-            # 通用问答模式 或 无参考知识：直接回答
-            prompt = f"""学生问题：{query}
+        # 构建消息
+        system_content = "你是一位友好、专业的学习助手，擅长用简洁易懂的语言回答各种问题。请结合当前对话的上下文理解用户的指代（如「这篇论文」「刚才那个」等）。"
 
-请直接回答这个问题。"""
-            response = await get_kimi_response(
-                prompt=prompt,
-                system_prompt="你是一位友好、专业的学习助手，擅长用简洁易懂的语言回答各种问题。"
-            )
-            return response
-        
-        # 学习模式 + 有参考知识：按知识点回答
-        context_text = "\n\n".join([f"参考知识 {i+1}:\n{k['content']}" for i, k in enumerate(context)])
-        prompt = f"""你是一位专业的编程教师助手。请根据以下参考知识回答学生的问题。
+        messages = [
+            {"role": "system", "content": system_content}
+        ]
+
+        # 注入历史对话，保证「这篇论文」等指代能关联到上文
+        if history:
+            for h in history:
+                messages.append({"role": h["role"], "content": h.get("content") or ""})
+
+        if current_turn_messages:
+            # 工具调用续写：只追加当前轮已有消息（含 assistant 的 tool_calls 与 tool 结果），不再追加 query
+            for m in current_turn_messages:
+                msg = dict(m)
+                role = msg.get("role")
+                if role == "tool":
+                    messages.append({"role": "tool", "tool_call_id": msg.get("tool_call_id"), "content": msg.get("content", "")})
+                elif "tool_calls" in msg and msg.get("tool_calls"):
+                    messages.append({"role": "assistant", "content": msg.get("content"), "tool_calls": msg["tool_calls"]})
+                else:
+                    messages.append({"role": role, "content": msg.get("content") or ""})
+        else:
+            # 新的一轮：追加当前用户问题（可带学习模式上下文）
+            if mode == "learning" and context:
+                context_text = "\n\n".join([f"参考知识 {i+1}:\n{k['content']}" for i, k in enumerate(context)])
+                prompt = f"""你是一位专业的编程教师助手。请根据以下参考知识回答学生的问题。
 
 参考知识：
 {context_text}
@@ -232,13 +259,79 @@ async def generate_response_with_kimi(query: str, context: List[Dict], student_i
 4. 如果学生有错误认知，请指出并纠正
 
 请直接给出回答，不要重复问题。"""
-        response = await get_kimi_response(
-            prompt=prompt,
-            system_prompt="你是一位专业的编程教师，擅长用简洁易懂的语言解释编程概念。"
-        )
-        return response
+                messages.append({"role": "user", "content": prompt})
+            else:
+                prompt = f"""学生问题：{query}
+
+请直接回答这个问题。"""
+                messages.append({"role": "user", "content": prompt})
+
+        # 如果有工具定义，使用 Function Calling
+        if tools:
+            result = await kimi_client.chat(
+                messages=messages,
+                tools=tools,
+                temperature=0.7,
+                max_tokens=2048
+            )
+
+            if "error" in result:
+                return {"type": "message", "content": f"抱歉，调用 AI 服务时出错：{result['error']}"}
+
+            choices = result.get("choices", [])
+            if not choices:
+                return {"type": "message", "content": "抱歉，没有收到 AI 的回复。"}
+
+            message = choices[0].get("message", {})
+
+            # 检查是否有 tool_calls
+            if "tool_calls" in message and message["tool_calls"]:
+                return {
+                    "type": "tool_calls",
+                    "tool_calls": message["tool_calls"]
+                }
+
+            # 普通文本回复
+            content = message.get("content", "")
+            return {"type": "message", "content": content}
+        else:
+            # 没有工具：用完整 messages（含历史）调用 chat，保证上下文关联
+            result = await kimi_client.chat(
+                messages=messages,
+                temperature=0.7,
+                max_tokens=2048,
+            )
+            if "error" in result:
+                return {"type": "message", "content": f"抱歉，调用 AI 服务时出错：{result['error']}"}
+            choices = result.get("choices", [])
+            if not choices:
+                return {"type": "message", "content": "抱歉，没有收到 AI 的回复。"}
+            content = (choices[0].get("message") or {}).get("content", "")
+            return {"type": "message", "content": content or "（无回复）"}
+
     except Exception as e:
-        return f"抱歉，回答生成过程中出现错误: {str(e)}"
+        return {"type": "message", "content": f"抱歉，回答生成过程中出现错误，请稍后重试。错误详情: {str(e)}"}
+
+
+async def get_session_history(session_id: str, limit_rounds: int = 10) -> List[Dict[str, str]]:
+    """获取会话历史（不含当前这条用户消息），按时间正序。用于上下文关联。"""
+    async with AsyncSessionLocal() as session:
+        # 多取 1 条，用于排除当前刚写入的用户消息
+        result = await session.execute(
+            select(ChatMessageDB)
+            .where(ChatMessageDB.session_id == session_id)
+            .order_by(ChatMessageDB.created_at.desc())
+            .limit(limit_rounds * 2 + 1)
+        )
+        rows = result.scalars().all()
+    if not rows:
+        return []
+    # 时间正序，并去掉最新一条（当前用户消息）
+    ordered = list(reversed(rows))[:-1]
+    return [
+        {"role": m.role, "content": (m.content or "").strip() or "(无内容)"}
+        for m in ordered[-limit_rounds * 2 :]
+    ]
 
 
 async def get_student_learning_context(student_id: str) -> Dict:
@@ -271,17 +364,19 @@ async def get_student_learning_context(student_id: str) -> Dict:
 
 @router.post("/message", response_model=ResponseModel)
 async def send_message(request: ChatRequest):
-    """发送消息并获取AI回答 - 真实RAG + Kimi"""
+    """发送消息并获取AI回答 - 真实RAG + Kimi（支持 Function Calling）"""
     session_id = request.session_id or str(uuid.uuid4())
     message_id = str(uuid.uuid4())
-    
+
+    MAX_TOOL_CALLS = 10  # 最大工具调用次数
+
     async with AsyncSessionLocal() as session:
         # Create or update session
         result = await session.execute(
             select(ChatSessionDB).where(ChatSessionDB.session_id == session_id)
         )
         chat_session = result.scalar_one_or_none()
-        
+
         if not chat_session:
             chat_session = ChatSessionDB(
                 session_id=session_id,
@@ -290,7 +385,7 @@ async def send_message(request: ChatRequest):
                 message_count=0
             )
             session.add(chat_session)
-        
+
         # Save user message
         user_message = ChatMessageDB(
             message_id=str(uuid.uuid4()),
@@ -300,32 +395,115 @@ async def send_message(request: ChatRequest):
             content=request.message
         )
         session.add(user_message)
-        
+
         # Update session
         chat_session.message_count += 1
         chat_session.updated_at = datetime.utcnow()
-        
+
         await session.commit()
-    
+
     # Get learning context
     learning_context = await get_student_learning_context(request.student_id)
-    
+
     # mode=learning 时检索知识库，mode=general 时直接问答
     if request.mode == "learning" and _is_learning_question(request.message):
         knowledge_results = await retrieve_knowledge(request.message, request.course_id, top_k=3)
     else:
         knowledge_results = []
-    
-    # 使用Kimi生成回答
-    ai_response_text = await generate_response_with_kimi(
+
+    # 加载会话历史，使「这篇论文」「刚才那个」等指代能关联到上文
+    session_history = await get_session_history(session_id, limit_rounds=10)
+
+    # 构建消息历史（当前轮：user + assistant tool_calls + tool 等）
+    messages_history = []
+
+    # 添加工具执行函数
+    async def execute_tool_call(tool_name: str, tool_args: dict) -> dict:
+        """执行工具调用"""
+        from services.agent.tools.registry import execute_tool
+        return await execute_tool(tool_name, tool_args)
+
+    # 使用 Kimi 生成回答（可能包含工具调用），传入历史以保持上下文
+    ai_response = await generate_response_with_kimi(
         query=request.message,
         context=knowledge_results,
         student_id=request.student_id,
-        mode=request.mode
+        mode=request.mode,
+        tools=request.tools,
+        history=session_history,
     )
-    
+
+    tool_calls_log = []
+
+    # 处理工具调用循环
+    if ai_response["type"] == "tool_calls":
+        # LLM 请求工具调用
+        messages_history.append({"role": "user", "content": request.message})
+
+        for call_count in range(MAX_TOOL_CALLS):
+            tool_calls = ai_response["tool_calls"]
+
+            for tc in tool_calls:
+                tool_name = tc["function"]["name"]
+                tool_args = tc["function"].get("arguments", {})
+
+                # 解析参数（如果是字符串）
+                try:
+                    if isinstance(tool_args, str):
+                        tool_args = json.loads(tool_args)
+                except json.JSONDecodeError:
+                    pass
+
+                # 添加 assistant 的 tool_call 消息
+                messages_history.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [tc]
+                })
+
+                # 执行工具
+                tool_result = await execute_tool_call(tool_name, tool_args)
+
+                # 记录工具调用
+                tool_calls_log.append({
+                    "tool": tool_name,
+                    "arguments": tool_args,
+                    "result": tool_result
+                })
+
+                # 添加 tool 角色消息
+                messages_history.append({
+                    "role": "tool",
+                    "tool_call_id": tc["id"],
+                    "content": json.dumps(tool_result, ensure_ascii=False)
+                })
+
+            # 继续调用 LLM，传入历史 + 当前轮已有消息（含工具调用与结果），保证模型能基于上文和工具结果继续回答
+            ai_response = await generate_response_with_kimi(
+                query=request.message,
+                context=knowledge_results,
+                student_id=request.student_id,
+                mode=request.mode,
+                tools=request.tools,
+                history=session_history,
+                current_turn_messages=messages_history,
+            )
+
+            # 检查是否还有工具调用
+            if ai_response["type"] == "tool_calls":
+                continue
+            else:
+                # 最终回复
+                break
+        else:
+            # 达到最大调用次数
+            ai_response = {"type": "message", "content": "抱歉，执行了太多工具调用，请简化你的问题。"}
+
+    # 获取最终回复文本
+    ai_response_text = ai_response.get("content", "")
+
     ai_message_id = str(uuid.uuid4())
-    
+
     # Save AI message
     async with AsyncSessionLocal() as session:
         ai_message = ChatMessageDB(
@@ -338,7 +516,7 @@ async def send_message(request: ChatRequest):
             knowledge_point_ids=[k["knowledge_point_id"] for k in knowledge_results]
         )
         session.add(ai_message)
-        
+
         # Update session message count
         result = await session.execute(
             select(ChatSessionDB).where(ChatSessionDB.session_id == session_id)
@@ -346,9 +524,9 @@ async def send_message(request: ChatRequest):
         chat_session = result.scalar_one_or_none()
         if chat_session:
             chat_session.message_count += 1
-        
+
         await session.commit()
-    
+
     return ResponseModel(
         code=200,
         message="success",
@@ -359,7 +537,8 @@ async def send_message(request: ChatRequest):
             "sources": [k["source"] for k in knowledge_results],
             "knowledge_point_ids": [k["knowledge_point_id"] for k in knowledge_results],
             "learning_context": learning_context,
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": datetime.utcnow().isoformat(),
+            "tool_calls_log": tool_calls_log if tool_calls_log else None,
         }
     )
 
