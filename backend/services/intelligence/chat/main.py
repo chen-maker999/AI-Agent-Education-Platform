@@ -62,7 +62,7 @@ class ChatFeedbackDB(Base):
 # Pydantic models
 class ChatRequest(BaseModel):
     session_id: Optional[str] = None
-    student_id: str
+    student_id: Optional[str] = "default"
     course_id: Optional[str] = None
     message: str
     mode: str = "general"  # "general" 通用问答 | "learning" 学习问答
@@ -228,7 +228,8 @@ async def generate_response_with_kimi(
         # 注入历史对话，保证「这篇论文」等指代能关联到上文
         if history:
             for h in history:
-                messages.append({"role": h["role"], "content": h.get("content") or ""})
+                if h.get("content"):  # 只添加有内容的消息
+                    messages.append({"role": h["role"], "content": h["content"]})
 
         if current_turn_messages:
             # 工具调用续写：只追加当前轮已有消息（含 assistant 的 tool_calls 与 tool 结果），不再追加 query
@@ -261,10 +262,8 @@ async def generate_response_with_kimi(
 请直接给出回答，不要重复问题。"""
                 messages.append({"role": "user", "content": prompt})
             else:
-                prompt = f"""学生问题：{query}
-
-请直接回答这个问题。"""
-                messages.append({"role": "user", "content": prompt})
+                # 普通问答 - 使用简洁的消息
+                messages.append({"role": "user", "content": query})
 
         # 如果有工具定义，使用 Function Calling
         if tools:
@@ -539,6 +538,149 @@ async def send_message(request: ChatRequest):
             "learning_context": learning_context,
             "created_at": datetime.utcnow().isoformat(),
             "tool_calls_log": tool_calls_log if tool_calls_log else None,
+        }
+    )
+
+
+@router.post("/message/stream")
+async def send_message_stream(request: ChatRequest):
+    """流式对话接口 - 支持实时输出AI回答"""
+    from fastapi.responses import StreamingResponse
+    from common.integration.kimi import kimi_client
+
+    session_id = request.session_id or str(uuid.uuid4())
+    message_id = str(uuid.uuid4())
+
+    async def generate_stream():
+        """生成流式响应"""
+        try:
+            # 保存用户消息
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(ChatSessionDB).where(ChatSessionDB.session_id == session_id)
+                )
+                chat_session = result.scalar_one_or_none()
+
+                if not chat_session:
+                    chat_session = ChatSessionDB(
+                        session_id=session_id,
+                        student_id=request.student_id,
+                        course_id=request.course_id,
+                        message_count=0
+                    )
+                    session.add(chat_session)
+
+                user_message = ChatMessageDB(
+                    message_id=str(uuid.uuid4()),
+                    session_id=session_id,
+                    student_id=request.student_id,
+                    role="user",
+                    content=request.message
+                )
+                session.add(user_message)
+                chat_session.message_count += 1
+                await session.commit()
+
+            # 获取学习上下文
+            learning_context = await get_student_learning_context(request.student_id)
+
+            # 检索知识库
+            if request.mode == "learning" and _is_learning_question(request.message):
+                knowledge_results = await retrieve_knowledge(request.message, request.course_id, top_k=3)
+            else:
+                knowledge_results = []
+
+            # 获取会话历史
+            session_history = await get_session_history(session_id, limit_rounds=10)
+
+            # 构建消息
+            system_content = "你是一位友好、专业的学习助手。"
+
+            messages = [{"role": "system", "content": system_content}]
+
+            if session_history:
+                for h in session_history:
+                    if h.get("content"):  # 只添加有内容的消息
+                        messages.append({"role": h["role"], "content": h["content"]})
+
+            # 添加用户消息
+            if knowledge_results:
+                context_text = "\n\n".join([
+                    f"[参考资料{i+1}] {k.get('content', '')[:300]}"
+                    for i, k in enumerate(knowledge_results)
+                ])
+                messages.append({
+                    "role": "user",
+                    "content": f"参考资料：\n{context_text}\n\n问题：{request.message}"
+                })
+            else:
+                # 普通问答 - 简洁消息
+                messages.append({"role": "user", "content": request.message})
+
+            # 流式调用 Kimi API（智能缓冲输出）
+            full_response = ""
+            buffer = ""  # 字符缓冲
+
+            async for chunk in kimi_client.chat_stream(messages):
+                if chunk.startswith("data: "):
+                    data = chunk[6:]
+                    if data == "[DONE]":
+                        # 发送剩余缓冲
+                        if buffer:
+                            yield f"data: {json.dumps({'content': buffer}, ensure_ascii=False)}\n\n"
+                        break
+                    try:
+                        parsed = json.loads(data)
+                        if "choices" in parsed:
+                            delta = parsed["choices"][0].get("delta", {})
+                            if "content" in delta:
+                                content = delta["content"]
+                                full_response += content
+                                buffer += content
+
+                                # 立即发送每个内容块，不缓冲
+                                yield f"data: {json.dumps({'content': buffer}, ensure_ascii=False)}\n\n"
+                                buffer = ""
+                    except json.JSONDecodeError:
+                        continue
+
+            # 保存AI回复
+            if full_response:
+                async with AsyncSessionLocal() as session:
+                    ai_message = ChatMessageDB(
+                        message_id=message_id,
+                        session_id=session_id,
+                        student_id=request.student_id,
+                        role="assistant",
+                        content=full_response,
+                        sources=[k["source"] for k in knowledge_results]
+                    )
+                    session.add(ai_message)
+
+                    result = await session.execute(
+                        select(ChatSessionDB).where(ChatSessionDB.session_id == session_id)
+                    )
+                    chat_session = result.scalar_one_or_none()
+                    if chat_session:
+                        chat_session.message_count += 1
+                    await session.commit()
+
+            # 发送完成信号
+            yield f"data: {json.dumps({'done': True, 'session_id': session_id, 'message_id': message_id}, ensure_ascii=False)}\n\n"
+
+        except Exception as e:
+            import traceback
+            import logging
+            logging.error(f"流式响应异常: {str(e)}\n{traceback.format_exc()}")
+            yield f"data: {json.dumps({'error': f'服务器错误: {str(e)}'}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
         }
     )
 

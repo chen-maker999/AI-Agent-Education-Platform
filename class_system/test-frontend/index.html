@@ -1,0 +1,2438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知识库 - macOS 风格</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23007AFF' rx='20' width='100' height='100'/%3E%3Cpath d='M50 20L75 35V65L50 80L25 65V35Z' fill='white' opacity='0.9'/%3E%3Cpath d='M50 30L65 40V60L50 70L35 60V40Z' fill='%23007AFF'/%3E%3C/svg%3E">
+    <style>
+        /* ========================================
+           CSS Variables - Design Tokens
+           ======================================== */
+        :root {
+            /* Colors */
+            --color-bg-primary: #1e1e1e;
+            --color-bg-secondary: rgba(255, 255, 255, 0.05);
+            --color-bg-tertiary: rgba(255, 255, 255, 0.08);
+            --color-bg-hover: rgba(255, 255, 255, 0.1);
+            --color-bg-active: rgba(255, 255, 255, 0.15);
+            --color-bg-selected: rgba(0, 122, 255, 0.25);
+            
+            --color-accent: #007AFF;
+            --color-accent-secondary: #5E5CE6;
+            --color-accent-hover: #3395FF;
+            
+            --color-success: #34C759;
+            --color-warning: #FF9500;
+            --color-danger: #FF3B30;
+            --color-pending: #8E8E93;
+            
+            --color-text-primary: #FFFFFF;
+            --color-text-secondary: rgba(255, 255, 255, 0.6);
+            --color-text-tertiary: rgba(255, 255, 255, 0.3);
+            
+            --color-border: rgba(255, 255, 255, 0.1);
+            --color-border-hover: rgba(255, 255, 255, 0.2);
+            
+            /* Traffic Light Colors */
+            --color-close: #FF5F57;
+            --color-minimize: #FEBC2E;
+            --color-maximize: #28C840;
+            
+            /* Typography */
+            --font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+            --font-size-xs: 11px;
+            --font-size-sm: 12px;
+            --font-size-base: 13px;
+            --font-size-md: 14px;
+            --font-size-lg: 16px;
+            --font-size-xl: 18px;
+            --font-size-2xl: 24px;
+            
+            /* Spacing */
+            --space-1: 4px;
+            --space-2: 8px;
+            --space-3: 12px;
+            --space-4: 16px;
+            --space-5: 20px;
+            --space-6: 24px;
+            --space-8: 32px;
+            --space-10: 40px;
+            
+            /* Border Radius */
+            --radius-sm: 6px;
+            --radius-md: 8px;
+            --radius-lg: 10px;
+            --radius-xl: 12px;
+            --radius-full: 9999px;
+            
+            /* Shadows */
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+            --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+            --shadow-xl: 0 25px 50px rgba(0, 0, 0, 0.6);
+            --shadow-glow: 0 0 20px rgba(0, 122, 255, 0.3);
+            
+            /* Transitions */
+            --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+            --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+            --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            --duration-fast: 150ms;
+            --duration-normal: 250ms;
+            --duration-slow: 350ms;
+            
+            /* Layout */
+            --sidebar-width: 200px;
+            --sidebar-collapsed: 60px;
+            --titlebar-height: 40px;
+            --statusbar-height: 44px;
+        }
+
+        /* ========================================
+           Base Styles
+           ======================================== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            font-size: 16px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+            font-family: var(--font-family);
+            font-size: var(--font-size-base);
+            color: var(--color-text-primary);
+            background: var(--color-bg-primary);
+            line-height: 1.5;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: var(--radius-full);
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Selection */
+        ::selection {
+            background: var(--color-accent);
+            color: white;
+        }
+
+        /* ========================================
+           Window Frame
+           ======================================== */
+        .window {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background: var(--color-bg-primary);
+            border-radius: var(--radius-xl);
+            overflow: hidden;
+            box-shadow: var(--shadow-xl);
+            position: relative;
+        }
+
+        .window::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: var(--radius-xl);
+            padding: 1px;
+            background: linear-gradient(135deg, rgba(255,255,255,0.2), rgba(255,255,255,0.05));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+        }
+
+        .titlebar {
+            height: var(--titlebar-height);
+            display: flex;
+            align-items: center;
+            padding: 0 var(--space-4);
+            background: var(--color-bg-secondary);
+            border-bottom: 1px solid var(--color-border);
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .traffic-lights {
+            display: flex;
+            gap: 8px;
+            position: absolute;
+            left: 12px;
+        }
+
+        .traffic-light {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform var(--duration-fast) var(--ease-spring);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .traffic-light:hover {
+            transform: scale(1.15);
+        }
+
+        .traffic-light:active {
+            transform: scale(0.95);
+        }
+
+        .traffic-light.close { background: var(--color-close); }
+        .traffic-light.minimize { background: var(--color-minimize); }
+        .traffic-light.maximize { background: var(--color-maximize); }
+
+        .traffic-light svg {
+            width: 6px;
+            height: 6px;
+            opacity: 0;
+            transition: opacity var(--duration-fast);
+        }
+
+        .traffic-light:hover svg {
+            opacity: 1;
+        }
+
+        .traffic-light.close:hover svg path {
+            fill: #B53D37;
+        }
+
+        .window-title {
+            flex: 1;
+            text-align: center;
+            font-size: var(--font-size-sm);
+            font-weight: 500;
+            color: var(--color-text-secondary);
+            letter-spacing: 0.3px;
+        }
+
+        .titlebar-controls {
+            position: absolute;
+            right: 12px;
+            display: flex;
+            gap: var(--space-2);
+        }
+
+        .titlebar-btn {
+            width: 28px;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--color-bg-tertiary);
+            border: none;
+            border-radius: var(--radius-sm);
+            color: var(--color-text-secondary);
+            cursor: pointer;
+            transition: all var(--duration-fast) var(--ease-default);
+        }
+
+        .titlebar-btn:hover {
+            background: var(--color-bg-hover);
+            color: var(--color-text-primary);
+        }
+
+        .titlebar-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* ========================================
+           Main Content
+           ======================================== */
+        .main-content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* ========================================
+           Top Tab Bar
+           ======================================== */
+        .tabbar {
+            display: none; /* Hidden - using bottom nav instead */
+        }
+
+        /* ========================================
+           Bottom Navigation Bar (iOS style)
+           ======================================== */
+        .bottom-nav {
+            position: fixed;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(30, 30, 30, 0.85);
+            backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 
+                        0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+            z-index: 100;
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 8px 16px;
+            border-radius: 18px;
+            cursor: pointer;
+            transition: all var(--duration-fast) var(--ease-default);
+            position: relative;
+            min-width: 60px;
+        }
+
+        .nav-item:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .nav-item:active {
+            transform: scale(0.92);
+        }
+
+        .nav-item.active {
+            background: var(--color-accent);
+        }
+
+        .nav-item.active::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 18px;
+            background: linear-gradient(135deg, rgba(255,255,255,0.2), transparent);
+            pointer-events: none;
+        }
+
+        .nav-icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--color-text-secondary);
+            transition: all var(--duration-fast);
+        }
+
+        .nav-icon svg {
+            width: 22px;
+            height: 22px;
+        }
+
+        .nav-item.active .nav-icon {
+            color: white;
+            transform: scale(1.1);
+        }
+
+        .nav-label {
+            font-size: 10px;
+            font-weight: 500;
+            color: var(--color-text-secondary);
+            transition: all var(--duration-fast);
+            white-space: nowrap;
+        }
+
+        .nav-item.active .nav-label {
+            color: white;
+        }
+
+        .nav-divider {
+            width: 1px;
+            height: 32px;
+            background: rgba(255, 255, 255, 0.15);
+            margin: 0 4px;
+        }
+
+        .nav-badge {
+            position: absolute;
+            top: 4px;
+            right: 8px;
+            min-width: 16px;
+            height: 16px;
+            padding: 0 4px;
+            background: var(--color-danger);
+            border-radius: 8px;
+            font-size: 10px;
+            font-weight: 600;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .nav-more-btn {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all var(--duration-fast) var(--ease-spring);
+        }
+
+        .nav-more-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: scale(1.05);
+        }
+
+        .nav-more-btn:active {
+            transform: scale(0.95);
+        }
+
+        .nav-more-btn svg {
+            width: 20px;
+            height: 20px;
+            color: var(--color-text-primary);
+        }
+
+        /* ========================================
+           Content Area
+           ======================================== */
+        .content-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Search Bar */
+        .search-container {
+            padding: var(--space-4);
+            border-bottom: 1px solid var(--color-border);
+            flex-shrink: 0;
+        }
+
+        .search-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 12px;
+            color: var(--color-text-tertiary);
+            pointer-events: none;
+            transition: color var(--duration-fast);
+        }
+
+        .search-icon svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .search-input {
+            width: 100%;
+            height: 36px;
+            padding: 0 80px 0 40px;
+            background: var(--color-bg-secondary);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            color: var(--color-text-primary);
+            font-family: inherit;
+            font-size: var(--font-size-base);
+            outline: none;
+            transition: all var(--duration-fast) var(--ease-default);
+        }
+
+        .search-input::placeholder {
+            color: var(--color-text-tertiary);
+        }
+
+        .search-input:hover {
+            border-color: var(--color-border-hover);
+        }
+
+        .search-input:focus {
+            border-color: var(--color-accent);
+            box-shadow: var(--shadow-glow);
+            background: var(--color-bg-tertiary);
+        }
+
+        .search-input:focus + .search-icon,
+        .search-input:focus ~ .search-icon {
+            color: var(--color-accent);
+        }
+
+        .search-shortcut {
+            position: absolute;
+            right: 12px;
+            display: flex;
+            gap: 4px;
+        }
+
+        .search-shortcut kbd {
+            font-family: inherit;
+            font-size: var(--font-size-xs);
+            color: var(--color-text-tertiary);
+            background: var(--color-bg-tertiary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid var(--color-border);
+        }
+
+        /* Filter Bar */
+        .filter-bar {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            padding: var(--space-3) var(--space-4);
+            border-bottom: 1px solid var(--color-border);
+            flex-shrink: 0;
+            flex-wrap: wrap;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+        }
+
+        .filter-label {
+            font-size: var(--font-size-sm);
+            color: var(--color-text-secondary);
+        }
+
+        .filter-chips {
+            display: flex;
+            gap: var(--space-2);
+        }
+
+        .filter-chip {
+            padding: var(--space-1) var(--space-3);
+            background: var(--color-bg-tertiary);
+            border: 1px solid transparent;
+            border-radius: var(--radius-full);
+            font-size: var(--font-size-sm);
+            color: var(--color-text-secondary);
+            cursor: pointer;
+            transition: all var(--duration-fast) var(--ease-default);
+            white-space: nowrap;
+        }
+
+        .filter-chip:hover {
+            background: var(--color-bg-hover);
+            color: var(--color-text-primary);
+        }
+
+        .filter-chip.active {
+            background: var(--color-accent);
+            color: white;
+        }
+
+        .filter-chip:active {
+            transform: scale(0.95);
+        }
+
+        /* Import Dropzone */
+        .import-zone {
+            margin: var(--space-4);
+            padding: var(--space-6);
+            border: 2px dashed var(--color-border);
+            border-radius: var(--radius-lg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-3);
+            cursor: pointer;
+            transition: all var(--duration-normal) var(--ease-default);
+            background: var(--color-bg-secondary);
+            flex-shrink: 0;
+        }
+
+        .import-zone:hover,
+        .import-zone.drag-over {
+            border-color: var(--color-accent);
+            background: rgba(0, 122, 255, 0.05);
+        }
+
+        .import-zone.drag-over {
+            transform: scale(1.02);
+            box-shadow: var(--shadow-glow);
+        }
+
+        .import-zone:active {
+            transform: scale(0.98);
+        }
+
+        .import-icon {
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--color-accent), var(--color-accent-secondary));
+            border-radius: var(--radius-lg);
+            color: white;
+            transition: transform var(--duration-normal) var(--ease-spring);
+        }
+
+        .import-zone:hover .import-icon {
+            transform: translateY(-4px);
+        }
+
+        .import-icon svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .import-text {
+            text-align: center;
+        }
+
+        .import-title {
+            font-size: var(--font-size-md);
+            font-weight: 500;
+            color: var(--color-text-primary);
+            margin-bottom: var(--space-1);
+        }
+
+        .import-subtitle {
+            font-size: var(--font-size-sm);
+            color: var(--color-text-tertiary);
+        }
+
+        .import-formats {
+            display: flex;
+            gap: var(--space-2);
+            margin-top: var(--space-2);
+        }
+
+        .format-badge {
+            font-size: var(--font-size-xs);
+            color: var(--color-text-tertiary);
+            background: var(--color-bg-tertiary);
+            padding: 2px 8px;
+            border-radius: var(--radius-sm);
+        }
+
+        /* Documents List */
+        .documents-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 var(--space-4) var(--space-4);
+        }
+
+        .documents-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--space-3) 0;
+            position: sticky;
+            top: 0;
+            background: var(--color-bg-primary);
+            z-index: 10;
+        }
+
+        .documents-count {
+            font-size: var(--font-size-sm);
+            color: var(--color-text-secondary);
+        }
+
+        .documents-sort {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+        }
+
+        .documents-sort select {
+            background: var(--color-bg-tertiary);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-sm);
+            color: var(--color-text-secondary);
+            font-family: inherit;
+            font-size: var(--font-size-sm);
+            padding: var(--space-1) var(--space-3);
+            cursor: pointer;
+            outline: none;
+        }
+
+        .documents-sort select:focus {
+            border-color: var(--color-accent);
+        }
+
+        .documents-list {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-3);
+        }
+
+        /* Document Card */
+        .document-card {
+            background: var(--color-bg-secondary);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            padding: var(--space-4);
+            cursor: pointer;
+            transition: all var(--duration-normal) var(--ease-default);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .document-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+        }
+
+        .document-card:hover {
+            background: var(--color-bg-tertiary);
+            border-color: var(--color-border-hover);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .document-card:active {
+            transform: translateY(0) scale(0.99);
+        }
+
+        .document-card.selected {
+            border-color: var(--color-accent);
+            background: var(--color-bg-selected);
+        }
+
+        .document-card.selected::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: var(--color-accent);
+        }
+
+        .document-card-header {
+            display: flex;
+            align-items: flex-start;
+            gap: var(--space-3);
+            margin-bottom: var(--space-3);
+        }
+
+        .document-icon {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--color-bg-tertiary);
+            border-radius: var(--radius-md);
+            color: var(--color-accent);
+            flex-shrink: 0;
+        }
+
+        .document-icon svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .document-icon.pdf { color: #FF6B6B; background: rgba(255, 107, 107, 0.1); }
+        .document-icon.doc { color: #4ECDC4; background: rgba(78, 205, 196, 0.1); }
+        .document-icon.txt { color: #95E1D3; background: rgba(149, 225, 211, 0.1); }
+        .document-icon.md { color: #A8D8EA; background: rgba(168, 216, 234, 0.1); }
+
+        .document-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .document-name {
+            font-size: var(--font-size-md);
+            font-weight: 500;
+            color: var(--color-text-primary);
+            margin-bottom: var(--space-1);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .document-meta {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            font-size: var(--font-size-sm);
+            color: var(--color-text-tertiary);
+        }
+
+        .document-meta-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-1);
+        }
+
+        .document-meta-item svg {
+            width: 12px;
+            height: 12px;
+        }
+
+        .document-actions {
+            display: flex;
+            gap: var(--space-2);
+            opacity: 0;
+            transition: opacity var(--duration-fast);
+        }
+
+        .document-card:hover .document-actions {
+            opacity: 1;
+        }
+
+        .doc-action-btn {
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--color-bg-tertiary);
+            border: none;
+            border-radius: var(--radius-sm);
+            color: var(--color-text-secondary);
+            cursor: pointer;
+            transition: all var(--duration-fast);
+        }
+
+        .doc-action-btn:hover {
+            background: var(--color-bg-hover);
+            color: var(--color-text-primary);
+        }
+
+        .doc-action-btn.danger:hover {
+            background: rgba(255, 59, 48, 0.2);
+            color: var(--color-danger);
+        }
+
+        .doc-action-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        /* Status Badge */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-1);
+            padding: var(--space-1) var(--space-2);
+            border-radius: var(--radius-full);
+            font-size: var(--font-size-xs);
+            font-weight: 500;
+        }
+
+        .status-badge svg {
+            width: 10px;
+            height: 10px;
+        }
+
+        .status-badge.completed {
+            background: rgba(52, 199, 89, 0.15);
+            color: var(--color-success);
+        }
+
+        .status-badge.indexing {
+            background: rgba(0, 122, 255, 0.15);
+            color: var(--color-accent);
+        }
+
+        .status-badge.pending {
+            background: rgba(142, 142, 147, 0.15);
+            color: var(--color-pending);
+        }
+
+        .status-badge.failed {
+            background: rgba(255, 59, 48, 0.15);
+            color: var(--color-danger);
+        }
+
+        /* Spinning animation */
+        .status-badge.indexing svg {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Knowledge Points */
+        .document-knowledge-points {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-2);
+            margin-top: var(--space-3);
+            padding-top: var(--space-3);
+            border-top: 1px solid var(--color-border);
+        }
+
+        .knowledge-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-1);
+            padding: var(--space-1) var(--space-2);
+            background: var(--color-bg-tertiary);
+            border-radius: var(--radius-full);
+            font-size: var(--font-size-xs);
+            color: var(--color-text-secondary);
+            transition: all var(--duration-fast);
+            cursor: pointer;
+        }
+
+        .knowledge-tag:hover {
+            background: var(--color-bg-hover);
+            color: var(--color-text-primary);
+        }
+
+        .knowledge-tag::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--color-accent);
+        }
+
+        .knowledge-tag:nth-child(2)::before { background: var(--color-accent-secondary); }
+        .knowledge-tag:nth-child(3)::before { background: var(--color-success); }
+        .knowledge-tag:nth-child(4)::before { background: var(--color-warning); }
+
+        /* ========================================
+           Status Bar
+           ======================================== */
+        .statusbar {
+            height: var(--statusbar-height);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 var(--space-4);
+            background: var(--color-bg-secondary);
+            border-top: 1px solid var(--color-border);
+            flex-shrink: 0;
+        }
+
+        .statusbar-left {
+            display: flex;
+            align-items: center;
+            gap: var(--space-4);
+        }
+
+        .statusbar-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-size: var(--font-size-sm);
+            color: var(--color-text-secondary);
+        }
+
+        .statusbar-item svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .statusbar-right {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+        }
+
+        /* Progress Bar */
+        .progress-container {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+        }
+
+        .progress-label {
+            font-size: var(--font-size-sm);
+            color: var(--color-text-secondary);
+            min-width: 80px;
+        }
+
+        .progress-bar {
+            width: 200px;
+            height: 4px;
+            background: var(--color-bg-tertiary);
+            border-radius: var(--radius-full);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--color-accent), var(--color-accent-secondary));
+            border-radius: var(--radius-full);
+            transition: width var(--duration-normal) var(--ease-default);
+            position: relative;
+        }
+
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .progress-percent {
+            font-size: var(--font-size-sm);
+            color: var(--color-text-primary);
+            font-weight: 500;
+            min-width: 40px;
+        }
+
+        /* Action Buttons */
+        .statusbar-actions {
+            display: flex;
+            gap: var(--space-2);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+            padding: var(--space-2) var(--space-4);
+            border: none;
+            border-radius: var(--radius-md);
+            font-family: inherit;
+            font-size: var(--font-size-sm);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--duration-fast) var(--ease-default);
+            white-space: nowrap;
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+        }
+
+        .btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .btn-primary {
+            background: var(--color-accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--color-accent-hover);
+            box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+        }
+
+        .btn-secondary {
+            background: var(--color-bg-tertiary);
+            color: var(--color-text-primary);
+        }
+
+        .btn-secondary:hover {
+            background: var(--color-bg-hover);
+        }
+
+        .btn-icon {
+            padding: var(--space-2);
+        }
+
+        /* ========================================
+           Modal / Popup
+           ======================================== */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all var(--duration-normal);
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal {
+            background: var(--color-bg-primary);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-xl);
+            width: 90%;
+            max-width: 500px;
+            transform: scale(0.95) translateY(20px);
+            transition: transform var(--duration-normal) var(--ease-spring);
+        }
+
+        .modal-overlay.active .modal {
+            transform: scale(1) translateY(0);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--space-4);
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .modal-title {
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+        }
+
+        .modal-close {
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: none;
+            border: none;
+            border-radius: var(--radius-sm);
+            color: var(--color-text-tertiary);
+            cursor: pointer;
+            transition: all var(--duration-fast);
+        }
+
+        .modal-close:hover {
+            background: var(--color-bg-hover);
+            color: var(--color-text-primary);
+        }
+
+        .modal-body {
+            padding: var(--space-4);
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: var(--space-3);
+            padding: var(--space-4);
+            border-top: 1px solid var(--color-border);
+        }
+
+        /* ========================================
+           Context Menu
+           ======================================== */
+        .context-menu {
+            position: fixed;
+            background: var(--color-bg-primary);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg);
+            padding: var(--space-2);
+            min-width: 180px;
+            z-index: 1001;
+            opacity: 0;
+            visibility: hidden;
+            transform: scale(0.95);
+            transition: all var(--duration-fast) var(--ease-spring);
+        }
+
+        .context-menu.active {
+            opacity: 1;
+            visibility: visible;
+            transform: scale(1);
+        }
+
+        .context-menu-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            padding: var(--space-2) var(--space-3);
+            border-radius: var(--radius-md);
+            font-size: var(--font-size-sm);
+            color: var(--color-text-primary);
+            cursor: pointer;
+            transition: background var(--duration-fast);
+        }
+
+        .context-menu-item:hover {
+            background: var(--color-bg-hover);
+        }
+
+        .context-menu-item.danger {
+            color: var(--color-danger);
+        }
+
+        .context-menu-item.danger:hover {
+            background: rgba(255, 59, 48, 0.1);
+        }
+
+        .context-menu-item svg {
+            width: 14px;
+            height: 14px;
+            color: var(--color-text-tertiary);
+        }
+
+        .context-menu-item.danger svg {
+            color: var(--color-danger);
+        }
+
+        .context-menu-divider {
+            height: 1px;
+            background: var(--color-border);
+            margin: var(--space-2) 0;
+        }
+
+        /* ========================================
+           Toast Notifications
+           ======================================== */
+        .toast-container {
+            position: fixed;
+            bottom: 80px;
+            right: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-3);
+            z-index: 1002;
+        }
+
+        .toast {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            padding: var(--space-3) var(--space-4);
+            background: var(--color-bg-secondary);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg);
+            backdrop-filter: blur(20px);
+            animation: slideIn var(--duration-normal) var(--ease-spring);
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(100%);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .toast.hiding {
+            animation: slideOut var(--duration-normal) var(--ease-default) forwards;
+        }
+
+        @keyframes slideOut {
+            to {
+                opacity: 0;
+                transform: translateX(100%);
+            }
+        }
+
+        .toast-icon {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+
+        .toast-icon.success {
+            background: rgba(52, 199, 89, 0.2);
+            color: var(--color-success);
+        }
+
+        .toast-icon.error {
+            background: rgba(255, 59, 48, 0.2);
+            color: var(--color-danger);
+        }
+
+        .toast-icon.info {
+            background: rgba(0, 122, 255, 0.2);
+            color: var(--color-accent);
+        }
+
+        .toast-icon svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .toast-message {
+            font-size: var(--font-size-sm);
+            color: var(--color-text-primary);
+        }
+
+        /* ========================================
+           Empty State
+           ======================================== */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: var(--space-10);
+            text-align: center;
+        }
+
+        .empty-state-icon {
+            width: 80px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--color-bg-secondary);
+            border-radius: 50%;
+            color: var(--color-text-tertiary);
+            margin-bottom: var(--space-4);
+        }
+
+        .empty-state-icon svg {
+            width: 40px;
+            height: 40px;
+        }
+
+        .empty-state-title {
+            font-size: var(--font-size-lg);
+            font-weight: 500;
+            color: var(--color-text-primary);
+            margin-bottom: var(--space-2);
+        }
+
+        .empty-state-text {
+            font-size: var(--font-size-sm);
+            color: var(--color-text-tertiary);
+            max-width: 300px;
+        }
+
+        /* ========================================
+           Tooltips
+           ======================================== */
+        .tooltip {
+            position: absolute;
+            background: var(--color-bg-primary);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            padding: var(--space-2) var(--space-3);
+            font-size: var(--font-size-xs);
+            color: var(--color-text-primary);
+            box-shadow: var(--shadow-md);
+            z-index: 1003;
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(4px);
+            transition: all var(--duration-fast) var(--ease-default);
+        }
+
+        .tooltip.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* ========================================
+           Checkbox
+           ======================================== */
+        .checkbox {
+            width: 18px;
+            height: 18px;
+            border: 2px solid var(--color-border);
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--duration-fast) var(--ease-spring);
+            flex-shrink: 0;
+        }
+
+        .checkbox:hover {
+            border-color: var(--color-accent);
+        }
+
+        .checkbox.checked {
+            background: var(--color-accent);
+            border-color: var(--color-accent);
+        }
+
+        .checkbox.checked svg {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .checkbox svg {
+            width: 10px;
+            height: 10px;
+            color: white;
+            opacity: 0;
+            transform: scale(0);
+            transition: all var(--duration-fast) var(--ease-spring);
+        }
+
+        /* ========================================
+           Pulse Animation
+           ======================================== */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .pulse {
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        /* ========================================
+           Fade In Animation
+           ======================================== */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn var(--duration-normal) var(--ease-default);
+        }
+
+        .fade-in-delay-1 { animation-delay: 100ms; animation-fill-mode: backwards; }
+        .fade-in-delay-2 { animation-delay: 200ms; animation-fill-mode: backwards; }
+        .fade-in-delay-3 { animation-delay: 300ms; animation-fill-mode: backwards; }
+
+        /* ========================================
+           Responsive
+           ======================================== */
+        @media (max-width: 600px) {
+            .bottom-nav {
+                bottom: 12px;
+                padding: 6px 10px;
+                gap: 4px;
+            }
+            
+            .nav-item {
+                padding: 6px 12px;
+                min-width: 50px;
+            }
+            
+            .nav-label {
+                font-size: 9px;
+            }
+            
+            .nav-divider {
+                height: 28px;
+                margin: 0 2px;
+            }
+            
+            .nav-more-btn {
+                width: 36px;
+                height: 36px;
+            }
+        }
+
+        @media (max-width: 400px) {
+            .nav-label {
+                display: none;
+            }
+            
+            .nav-item {
+                min-width: 44px;
+                padding: 8px;
+            }
+        }
+
+        /* ========================================
+           Floating Sidebar Panel
+           ======================================== */
+        .floating-sidebar {
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%) scale(0.9);
+            width: 300px;
+            background: rgba(30, 30, 30, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 20px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+            padding: var(--space-4);
+            z-index: 200;
+            opacity: 0;
+            visibility: hidden;
+            transition: all var(--duration-normal) var(--ease-spring);
+            backdrop-filter: blur(20px);
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .floating-sidebar.active {
+            opacity: 1;
+            visibility: visible;
+            transform: translate(-50%, -50%) scale(1);
+        }
+
+        .floating-sidebar-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 150;
+            opacity: 0;
+            visibility: hidden;
+            transition: all var(--duration-normal);
+        }
+
+        .floating-sidebar-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .floating-sidebar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-3);
+            padding-bottom: var(--space-2);
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .floating-sidebar-title {
+            font-size: var(--font-size-sm);
+            font-weight: 600;
+            color: var(--color-text-secondary);
+        }
+
+        .floating-sidebar-section {
+            margin-bottom: var(--space-3);
+        }
+
+        .floating-sidebar-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .floating-sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            padding: var(--space-2) var(--space-3);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: all var(--duration-fast);
+            font-size: var(--font-size-sm);
+            color: var(--color-text-primary);
+        }
+
+        .floating-sidebar-item:hover {
+            background: var(--color-bg-hover);
+        }
+
+        .floating-sidebar-item.active {
+            background: var(--color-bg-selected);
+            color: var(--color-accent);
+        }
+
+        .floating-sidebar-item svg {
+            width: 16px;
+            height: 16px;
+            color: var(--color-accent);
+            flex-shrink: 0;
+        }
+
+        .floating-sidebar-divider {
+            height: 1px;
+            background: var(--color-border);
+            margin: var(--space-2) 0;
+        }
+
+        /* Sidebar toggle button active state */
+        .tab-item.active-tabbar-btn {
+            background: var(--color-bg-tertiary);
+        }
+
+        .tab-item.active-tabbar-btn svg {
+            color: var(--color-accent);
+        }
+    </style>
+</head>
+<body>
+    <div class="window">
+        <!-- Title Bar -->
+        <div class="titlebar">
+            <div class="traffic-lights">
+                <div class="traffic-light close" title="关闭">
+                    <svg viewBox="0 0 12 12"><path d="M3 3L9 9M9 3L3 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                </div>
+                <div class="traffic-light minimize" title="最小化">
+                    <svg viewBox="0 0 12 12"><path d="M2 6H10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                </div>
+                <div class="traffic-light maximize" title="最大化">
+                    <svg viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+                </div>
+            </div>
+            <div class="window-title">知识库</div>
+            <div class="titlebar-controls">
+                <button class="titlebar-btn" title="全屏">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Content Area -->
+            <main class="content-area">
+                <!-- Search Bar -->
+                <div class="search-container">
+                    <div class="search-wrapper">
+                        <span class="search-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        </span>
+                        <input type="text" class="search-input" id="searchInput" placeholder="搜索文档、知识点...">
+                        <div class="search-shortcut">
+                            <kbd>⌘</kbd><kbd>K</kbd>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Filter Bar -->
+                <div class="filter-bar">
+                    <div class="filter-group">
+                        <span class="filter-label">文件类型：</span>
+                        <div class="filter-chips">
+                            <button class="filter-chip active" data-filter="all">全部</button>
+                            <button class="filter-chip" data-filter="pdf">PDF</button>
+                            <button class="filter-chip" data-filter="doc">Word</button>
+                            <button class="filter-chip" data-filter="txt">文本</button>
+                            <button class="filter-chip" data-filter="md">Markdown</button>
+                        </div>
+                    </div>
+                    <div class="filter-group">
+                        <span class="filter-label">状态：</span>
+                        <div class="filter-chips">
+                            <button class="filter-chip active" data-status="all">全部</button>
+                            <button class="filter-chip" data-status="completed">已完成</button>
+                            <button class="filter-chip" data-status="indexing">索引中</button>
+                            <button class="filter-chip" data-status="pending">待处理</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Import Zone -->
+                <div class="import-zone" id="importZone">
+                    <div class="import-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17,8 12,3 7,8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    </div>
+                    <div class="import-text">
+                        <div class="import-title">拖放文件到此处导入</div>
+                        <div class="import-subtitle">或点击选择文件</div>
+                    </div>
+                    <div class="import-formats">
+                        <span class="format-badge">.pdf</span>
+                        <span class="format-badge">.docx</span>
+                        <span class="format-badge">.txt</span>
+                        <span class="format-badge">.md</span>
+                    </div>
+                </div>
+                <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt,.md" style="display: none;">
+
+                <!-- Documents List -->
+                <div class="documents-container" style="padding-bottom: 100px;">
+                    <div class="documents-header">
+                        <span class="documents-count" id="documentsCount">24 个文档</span>
+                        <div class="documents-sort">
+                            <select id="sortSelect">
+                                <option value="date">按更新时间</option>
+                                <option value="name">按名称</option>
+                                <option value="size">按大小</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="documents-list" id="documentsList">
+                        <!-- Document Cards will be rendered here -->
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Bottom Navigation Bar -->
+        <div class="bottom-nav">
+            <div class="nav-item active" data-page="knowledge">
+                <div class="nav-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+                </div>
+                <span class="nav-label">知识库</span>
+            </div>
+            <div class="nav-item" data-page="docs">
+                <div class="nav-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                </div>
+                <span class="nav-label">文档</span>
+                <span class="nav-badge">24</span>
+            </div>
+            <div class="nav-item" data-page="tags">
+                <div class="nav-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                </div>
+                <span class="nav-label">标签</span>
+            </div>
+            <div class="nav-divider"></div>
+            <div class="nav-item" data-page="stats">
+                <div class="nav-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                </div>
+                <span class="nav-label">统计</span>
+            </div>
+            <div class="nav-item" data-page="settings">
+                <div class="nav-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+                </div>
+                <span class="nav-label">设置</span>
+            </div>
+            <div class="nav-more-btn" id="moreMenuBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+            </div>
+        </div>
+
+        <!-- Floating Sidebar Modal -->
+        <div class="floating-sidebar-overlay" id="sidebarOverlay"></div>
+        <div class="floating-sidebar" id="floatingSidebar">
+            <div class="floating-sidebar-header">
+                <span class="floating-sidebar-title">快速访问</span>
+            </div>
+            <div class="floating-sidebar-section">
+                <div class="floating-sidebar-item active">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+                    知识库
+                </div>
+                <div class="floating-sidebar-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+                    文档
+                </div>
+                <div class="floating-sidebar-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                    标签
+                </div>
+                <div class="floating-sidebar-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
+                    最近
+                </div>
+            </div>
+            <div class="floating-sidebar-divider"></div>
+            <div class="floating-sidebar-section">
+                <div class="floating-sidebar-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                    统计概览
+                </div>
+            </div>
+            <div class="floating-sidebar-divider"></div>
+            <div class="floating-sidebar-section">
+                <div class="floating-sidebar-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+                    设置
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="statusbar">
+            <div class="statusbar-left">
+                <div class="statusbar-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+                    <span>已选择 <strong id="selectedCount">0</strong> 个文档</span>
+                </div>
+                <div class="progress-container">
+                    <span class="progress-label">索引进度：</span>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                    </div>
+                    <span class="progress-percent" id="progressPercent">0%</span>
+                </div>
+            </div>
+            <div class="statusbar-right">
+                <div class="statusbar-actions">
+                    <button class="btn btn-secondary" id="pauseBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                        暂停
+                    </button>
+                    <button class="btn btn-primary" id="startIndexBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg>
+                        开始索引
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div class="context-menu" id="contextMenu">
+        <div class="context-menu-item" data-action="preview">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            预览
+        </div>
+        <div class="context-menu-item" data-action="reindex">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            重新索引
+        </div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item" data-action="export">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            导出
+        </div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item danger" data-action="delete">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+            删除
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        // ========================================
+        // State Management
+        // ========================================
+        const state = {
+            documents: [
+                {
+                    id: 1,
+                    name: '机器学习入门指南.pdf',
+                    type: 'pdf',
+                    status: 'completed',
+                    knowledgePoints: ['监督学习', '神经网络', '模型评估'],
+                    size: '2.4 MB',
+                    updatedAt: '2026-03-20',
+                    selected: false
+                },
+                {
+                    id: 2,
+                    name: 'Python编程最佳实践.docx',
+                    type: 'doc',
+                    status: 'indexing',
+                    knowledgePoints: ['代码规范', 'PEP8', '类型提示'],
+                    size: '1.8 MB',
+                    updatedAt: '2026-03-19',
+                    selected: false
+                },
+                {
+                    id: 3,
+                    name: '项目需求文档.txt',
+                    type: 'txt',
+                    status: 'completed',
+                    knowledgePoints: ['功能列表', '用户故事', '验收标准'],
+                    size: '156 KB',
+                    updatedAt: '2026-03-18',
+                    selected: false
+                },
+                {
+                    id: 4,
+                    name: 'React组件设计模式.md',
+                    type: 'md',
+                    status: 'pending',
+                    knowledgePoints: ['HOC', 'Render Props', 'Hooks'],
+                    size: '89 KB',
+                    updatedAt: '2026-03-17',
+                    selected: false
+                },
+                {
+                    id: 5,
+                    name: '数据库优化技巧.pdf',
+                    type: 'pdf',
+                    status: 'completed',
+                    knowledgePoints: ['索引优化', '查询优化', '缓存策略'],
+                    size: '3.2 MB',
+                    updatedAt: '2026-03-15',
+                    selected: false
+                },
+                {
+                    id: 6,
+                    name: 'API接口设计规范.docx',
+                    type: 'doc',
+                    status: 'failed',
+                    knowledgePoints: ['RESTful', 'GraphQL', '错误处理'],
+                    size: '2.1 MB',
+                    updatedAt: '2026-03-14',
+                    selected: false
+                }
+            ],
+            filter: 'all',
+            statusFilter: 'all',
+            searchQuery: '',
+            sortBy: 'date',
+            isIndexing: false,
+            indexingProgress: 0,
+            selectedDocuments: new Set()
+        };
+
+        // ========================================
+        // DOM Elements
+        // ========================================
+        const elements = {
+            searchInput: document.getElementById('searchInput'),
+            documentsList: document.getElementById('documentsList'),
+            documentsCount: document.getElementById('documentsCount'),
+            filterChips: document.querySelectorAll('.filter-chip[data-filter]'),
+            statusChips: document.querySelectorAll('.filter-chip[data-status]'),
+            importZone: document.getElementById('importZone'),
+            fileInput: document.getElementById('fileInput'),
+            contextMenu: document.getElementById('contextMenu'),
+            toastContainer: document.getElementById('toastContainer'),
+            progressFill: document.getElementById('progressFill'),
+            progressPercent: document.getElementById('progressPercent'),
+            startIndexBtn: document.getElementById('startIndexBtn'),
+            pauseBtn: document.getElementById('pauseBtn'),
+            selectedCount: document.getElementById('selectedCount'),
+            sortSelect: document.getElementById('sortSelect')
+        };
+
+        // ========================================
+        // Icons
+        // ========================================
+        const icons = {
+            pdf: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></svg>`,
+            doc: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+            txt: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+            md: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>`,
+            completed: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22,4 12,14.01 9,11.01"/></svg>`,
+            indexing: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>`,
+            pending: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>`,
+            failed: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+            clock: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>`,
+            file: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>`,
+            trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>`,
+            more: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>`,
+            check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20,6 9,17 4,12"/></svg>`
+        };
+
+        // ========================================
+        // Utility Functions
+        // ========================================
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.innerHTML = `
+                <div class="toast-icon ${type}">
+                    ${type === 'success' ? icons.completed : type === 'error' ? icons.failed : icons.indexing}
+                </div>
+                <span class="toast-message">${message}</span>
+            `;
+            elements.toastContainer.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.add('hiding');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            const now = new Date();
+            const diff = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+            
+            if (diff === 0) return '今天';
+            if (diff === 1) return '昨天';
+            if (diff < 7) return `${diff} 天前`;
+            return dateStr;
+        }
+
+        // ========================================
+        // Render Functions
+        // ========================================
+        function renderDocuments() {
+            let filteredDocs = [...state.documents];
+
+            // Apply search filter
+            if (state.searchQuery) {
+                const query = state.searchQuery.toLowerCase();
+                filteredDocs = filteredDocs.filter(doc => 
+                    doc.name.toLowerCase().includes(query) ||
+                    doc.knowledgePoints.some(kp => kp.toLowerCase().includes(query))
+                );
+            }
+
+            // Apply type filter
+            if (state.filter !== 'all') {
+                filteredDocs = filteredDocs.filter(doc => doc.type === state.filter);
+            }
+
+            // Apply status filter
+            if (state.statusFilter !== 'all') {
+                filteredDocs = filteredDocs.filter(doc => doc.status === state.statusFilter);
+            }
+
+            // Apply sorting
+            filteredDocs.sort((a, b) => {
+                switch (state.sortBy) {
+                    case 'name':
+                        return a.name.localeCompare(b.name);
+                    case 'size':
+                        return parseFloat(b.size) - parseFloat(a.size);
+                    default:
+                        return new Date(b.updatedAt) - new Date(a.updatedAt);
+                }
+            });
+
+            elements.documentsCount.textContent = `${filteredDocs.length} 个文档`;
+
+            if (filteredDocs.length === 0) {
+                elements.documentsList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                        </div>
+                        <div class="empty-state-title">没有找到文档</div>
+                        <div class="empty-state-text">尝试调整搜索条件或导入新文档</div>
+                    </div>
+                `;
+                return;
+            }
+
+            elements.documentsList.innerHTML = filteredDocs.map((doc, index) => `
+                <div class="document-card ${doc.selected ? 'selected' : ''}" data-id="${doc.id}" style="animation-delay: ${index * 50}ms">
+                    <div class="document-card-header">
+                        <div class="document-icon ${doc.type}">
+                            ${icons[doc.type]}
+                        </div>
+                        <div class="document-info">
+                            <div class="document-name">${doc.name}</div>
+                            <div class="document-meta">
+                                <span class="status-badge ${doc.status}">
+                                    ${icons[doc.status]}
+                                    ${doc.status === 'completed' ? '已完成' : 
+                                      doc.status === 'indexing' ? '索引中' : 
+                                      doc.status === 'failed' ? '失败' : '待处理'}
+                                </span>
+                                <span class="document-meta-item">
+                                    ${icons.clock}
+                                    ${formatDate(doc.updatedAt)}
+                                </span>
+                                <span class="document-meta-item">
+                                    ${icons.file}
+                                    ${doc.size}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="document-actions">
+                            <button class="doc-action-btn" data-action="more" title="更多操作">
+                                ${icons.more}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="document-knowledge-points">
+                        ${doc.knowledgePoints.map(kp => `<span class="knowledge-tag">${kp}</span>`).join('')}
+                    </div>
+                </div>
+            `).join('');
+
+            // Add click handlers
+            document.querySelectorAll('.document-card').forEach(card => {
+                card.addEventListener('click', handleCardClick);
+                card.addEventListener('contextmenu', handleContextMenu);
+            });
+
+            document.querySelectorAll('.doc-action-btn').forEach(btn => {
+                btn.addEventListener('click', handleActionClick);
+            });
+        }
+
+        function updateProgress() {
+            const completed = state.documents.filter(d => d.status === 'completed').length;
+            const total = state.documents.length;
+            const progress = Math.round((completed / total) * 100);
+            
+            state.indexingProgress = progress;
+            elements.progressFill.style.width = `${progress}%`;
+            elements.progressPercent.textContent = `${progress}%`;
+        }
+
+        // ========================================
+        // Event Handlers
+        // ========================================
+        function handleSearch() {
+            state.searchQuery = elements.searchInput.value;
+            renderDocuments();
+        }
+
+        function handleFilterClick(e) {
+            const filter = e.target.dataset.filter;
+            if (!filter) return;
+
+            elements.filterChips.forEach(chip => chip.classList.remove('active'));
+            e.target.classList.add('active');
+            state.filter = filter;
+            renderDocuments();
+        }
+
+        function handleStatusFilterClick(e) {
+            const status = e.target.dataset.status;
+            if (!status) return;
+
+            elements.statusChips.forEach(chip => chip.classList.remove('active'));
+            e.target.classList.add('active');
+            state.statusFilter = status;
+            renderDocuments();
+        }
+
+        function handleCardClick(e) {
+            const card = e.target.closest('.document-card');
+            if (!card) return;
+
+            const id = parseInt(card.dataset.id);
+            const doc = state.documents.find(d => d.id === id);
+            if (doc) {
+                doc.selected = !doc.selected;
+                if (doc.selected) {
+                    state.selectedDocuments.add(id);
+                } else {
+                    state.selectedDocuments.delete(id);
+                }
+                elements.selectedCount.textContent = state.selectedDocuments.size;
+                renderDocuments();
+            }
+        }
+
+        function handleActionClick(e) {
+            e.stopPropagation();
+            const btn = e.target.closest('.doc-action-btn');
+            const card = btn.closest('.document-card');
+            const id = parseInt(card.dataset.id);
+            showContextMenu(btn, id);
+        }
+
+        function handleContextMenu(e) {
+            e.preventDefault();
+            const card = e.target.closest('.document-card');
+            if (card) {
+                const id = parseInt(card.dataset.id);
+                showContextMenu(e, id);
+            }
+        }
+
+        function showContextMenu(element, docId) {
+            const rect = element.getBoundingClientRect();
+            elements.contextMenu.style.left = `${rect.left}px`;
+            elements.contextMenu.style.top = `${rect.bottom + 8}px`;
+            elements.contextMenu.classList.add('active');
+            elements.contextMenu.dataset.docId = docId;
+        }
+
+        function hideContextMenu() {
+            elements.contextMenu.classList.remove('active');
+        }
+
+        function handleContextMenuAction(action) {
+            const docId = parseInt(elements.contextMenu.dataset.docId);
+            const doc = state.documents.find(d => d.id === docId);
+
+            switch (action) {
+                case 'preview':
+                    showToast(`预览: ${doc.name}`);
+                    break;
+                case 'reindex':
+                    doc.status = 'indexing';
+                    renderDocuments();
+                    showToast(`重新索引: ${doc.name}`, 'info');
+                    setTimeout(() => {
+                        doc.status = 'completed';
+                        renderDocuments();
+                        updateProgress();
+                        showToast(`索引完成: ${doc.name}`, 'success');
+                    }, 2000);
+                    break;
+                case 'export':
+                    showToast(`导出: ${doc.name}`);
+                    break;
+                case 'delete':
+                    state.documents = state.documents.filter(d => d.id !== docId);
+                    renderDocuments();
+                    updateProgress();
+                    showToast(`已删除: ${doc.name}`, 'success');
+                    break;
+            }
+            hideContextMenu();
+        }
+
+        function handleImport() {
+            elements.fileInput.click();
+        }
+
+        function handleFileSelect(e) {
+            const files = Array.from(e.target.files);
+            files.forEach(file => {
+                const type = file.name.split('.').pop().toLowerCase();
+                const newDoc = {
+                    id: Date.now() + Math.random(),
+                    name: file.name,
+                    type: type === 'docx' ? 'doc' : type,
+                    status: 'pending',
+                    knowledgePoints: [],
+                    size: formatFileSize(file.size),
+                    updatedAt: new Date().toISOString().split('T')[0],
+                    selected: false
+                };
+                state.documents.unshift(newDoc);
+            });
+            
+            if (files.length > 0) {
+                renderDocuments();
+                updateProgress();
+                showToast(`成功导入 ${files.length} 个文件`, 'success');
+            }
+            e.target.value = '';
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            elements.importZone.classList.add('drag-over');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            elements.importZone.classList.remove('drag-over');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            elements.importZone.classList.remove('drag-over');
+            
+            const files = Array.from(e.dataTransfer.files);
+            const validFiles = files.filter(f => 
+                /\.(pdf|docx|txt|md)$/i.test(f.name)
+            );
+            
+            validFiles.forEach(file => {
+                const type = file.name.split('.').pop().toLowerCase();
+                const newDoc = {
+                    id: Date.now() + Math.random(),
+                    name: file.name,
+                    type: type === 'docx' ? 'doc' : type,
+                    status: 'pending',
+                    knowledgePoints: [],
+                    size: formatFileSize(file.size),
+                    updatedAt: new Date().toISOString().split('T')[0],
+                    selected: false
+                };
+                state.documents.unshift(newDoc);
+            });
+
+            if (validFiles.length > 0) {
+                renderDocuments();
+                updateProgress();
+                showToast(`成功导入 ${validFiles.length} 个文件`, 'success');
+            } else if (files.length > 0) {
+                showToast('不支持的文件格式', 'error');
+            }
+        }
+
+        function handleStartIndex() {
+            if (state.isIndexing) return;
+            
+            state.isIndexing = true;
+            elements.startIndexBtn.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                索引中...
+            `;
+            elements.startIndexBtn.disabled = true;
+
+            const pendingDocs = state.documents.filter(d => d.status === 'pending' || d.status === 'failed');
+            let completed = 0;
+            
+            const interval = setInterval(() => {
+                const pending = pendingDocs.slice(completed, completed + 1)[0];
+                if (pending) {
+                    pending.status = 'indexing';
+                    renderDocuments();
+                    
+                    setTimeout(() => {
+                        pending.status = 'completed';
+                        completed++;
+                        state.indexingProgress = Math.round((completed / pendingDocs.length) * 100);
+                        elements.progressFill.style.width = `${state.indexingProgress}%`;
+                        elements.progressPercent.textContent = `${state.indexingProgress}%`;
+                        renderDocuments();
+                        
+                        if (completed >= pendingDocs.length) {
+                            clearInterval(interval);
+                            state.isIndexing = false;
+                            elements.startIndexBtn.innerHTML = `
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg>
+                                开始索引
+                            `;
+                            elements.startIndexBtn.disabled = false;
+                            showToast('所有文档索引完成！', 'success');
+                        }
+                    }, 800);
+                }
+            }, 1000);
+        }
+
+        function handlePauseIndex() {
+            showToast('索引已暂停', 'info');
+        }
+
+        function handleSortChange() {
+            state.sortBy = elements.sortSelect.value;
+            renderDocuments();
+        }
+
+        function handleKeyboard(e) {
+            // ⌘K to focus search
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                elements.searchInput.focus();
+            }
+            
+            // Escape to close context menu
+            if (e.key === 'Escape') {
+                hideContextMenu();
+            }
+        }
+
+        // ========================================
+        // Initialize
+        // ========================================
+        let sidebarVisible = false;
+
+        function toggleFloatingSidebar() {
+            const sidebar = document.getElementById('floatingSidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            sidebarVisible = !sidebarVisible;
+            
+            if (sidebarVisible) {
+                sidebar.classList.add('active');
+                overlay.classList.add('active');
+            } else {
+                sidebar.classList.remove('active');
+                overlay.classList.remove('active');
+            }
+        }
+
+        function init() {
+            // Bottom navigation functionality
+            const navItems = document.querySelectorAll('.nav-item');
+            navItems.forEach(item => {
+                item.addEventListener('click', () => {
+                    navItems.forEach(i => i.classList.remove('active'));
+                    item.classList.add('active');
+                    
+                    // Show toast for navigation
+                    const page = item.dataset.page;
+                    const labels = {
+                        knowledge: '知识库',
+                        docs: '文档',
+                        tags: '标签',
+                        stats: '统计',
+                        settings: '设置'
+                    };
+                    if (labels[page]) {
+                        showToast(`切换到: ${labels[page]}`, 'info');
+                    }
+                });
+            });
+            
+            // More menu button
+            document.getElementById('moreMenuBtn').addEventListener('click', toggleFloatingSidebar);
+            
+            // Overlay click to close
+            document.getElementById('sidebarOverlay').addEventListener('click', toggleFloatingSidebar);
+            
+            // Floating sidebar item click
+            document.querySelectorAll('.floating-sidebar-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    document.querySelectorAll('.floating-sidebar-item').forEach(i => i.classList.remove('active'));
+                    item.classList.add('active');
+                    setTimeout(toggleFloatingSidebar, 200);
+                });
+            });
+            
+            // Event listeners
+            elements.searchInput.addEventListener('input', debounce(handleSearch, 300));
+            elements.filterChips.forEach(chip => chip.addEventListener('click', handleFilterClick));
+            elements.statusChips.forEach(chip => chip.addEventListener('click', handleStatusFilterClick));
+            elements.importZone.addEventListener('click', handleImport);
+            elements.fileInput.addEventListener('change', handleFileSelect);
+            elements.importZone.addEventListener('dragover', handleDragOver);
+            elements.importZone.addEventListener('dragleave', handleDragLeave);
+            elements.importZone.addEventListener('drop', handleDrop);
+            elements.startIndexBtn.addEventListener('click', handleStartIndex);
+            elements.pauseBtn.addEventListener('click', handlePauseIndex);
+            elements.sortSelect.addEventListener('change', handleSortChange);
+            
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.context-menu') && !e.target.closest('.doc-action-btn')) {
+                    hideContextMenu();
+                }
+            });
+            
+            document.addEventListener('keydown', handleKeyboard);
+            
+            elements.contextMenu.querySelectorAll('.context-menu-item').forEach(item => {
+                item.addEventListener('click', () => handleContextMenuAction(item.dataset.action));
+            });
+
+            // Initial render
+            renderDocuments();
+            updateProgress();
+        }
+
+        // Start
+        init();
+    </script>
+</body>
+</html>

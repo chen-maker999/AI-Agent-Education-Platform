@@ -1,0 +1,34 @@
+
+> ai-education-frontend@1.0.0 preview
+> vite preview --host 127.0.0.1 --port 4173
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m4173[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+[2m17:12:36[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/v1/knowledge/rag/documents?course_id=default[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m17:12:36[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/v1/homework/statistics/summary[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m17:12:36[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/v1/intelligence/warning/stats[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m17:15:32[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/v1/knowledge/rag/documents?course_id=default[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m17:15:32[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/v1/homework/statistics/summary[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m17:15:32[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/v1/intelligence/warning/stats[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m17:18:06[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/v1/knowledge/graph[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)

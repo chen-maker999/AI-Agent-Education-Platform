@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>知识图谱</title>
+  <style>
+    :root {
+      --bg-window: #ececec;
+      --bg-content: #f5f5f7;
+      --bg-panel: rgba(255, 255, 255, 0.72);
+      --bg-panel-solid: #ffffff;
+      --bg-sidebar: rgba(246, 246, 246, 0.85);
+      --border: rgba(0, 0, 0, 0.08);
+      --border-strong: rgba(0, 0, 0, 0.12);
+      --text: #1d1d1f;
+      --text-secondary: rgba(60, 60, 67, 0.72);
+      --text-tertiary: rgba(60, 60, 67, 0.48);
+      --accent: #007aff;
+      --accent-soft: rgba(0, 122, 255, 0.12);
+      --shadow-window: 0 22px 70px rgba(0, 0, 0, 0.12);
+      --shadow-panel: 0 1px 3px rgba(0, 0, 0, 0.06);
+      --radius-window: 14px;
+      --radius-panel: 10px;
+      --radius-pill: 980px;
+      --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font);
+      font-size: 13px;
+      color: var(--text);
+      background: linear-gradient(165deg, #d4d4d8 0%, #e8e8ed 40%, #dfe3ea 100%);
+      display: flex;
+      align-items: stretch;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* 独立窗口：浅色、居中卡片式，区别于知识库全屏深色布局 */
+    .mac-window {
+      width: min(1180px, 100%);
+      height: 100vh;
+      margin: 0 auto;
+      background: var(--bg-window);
+      border-radius: 0;
+      box-shadow: none;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* 标题栏：更矮、更「系统设置」感 */
+    .titlebar {
+      height: 36px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      background: linear-gradient(180deg, #fbfbfb 0%, #ececec 100%);
+      border-bottom: 1px solid var(--border);
+      -webkit-app-region: drag;
+    }
+    .titlebar-title {
+      flex: 1;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      letter-spacing: 0.02em;
+    }
+    .titlebar-hint {
+      font-size: 11px;
+      color: var(--text-tertiary);
+    }
+
+    /* 工具栏：分段控件 + 搜索 —— 与知识库的「搜索条独占一行」结构不同 */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px 10px;
+      background: linear-gradient(180deg, #ebebed 0%, #e4e4e7 100%);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .segmented {
+      display: inline-flex;
+      background: rgba(0,0,0,0.06);
+      border-radius: 6px;
+      padding: 2px;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.06);
+    }
+    .segmented button {
+      border: none;
+      background: transparent;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      padding: 4px 12px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .segmented button[aria-pressed="true"] {
+      background: var(--bg-panel-solid);
+      color: var(--text);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    }
+    .toolbar-spacer { flex: 1; }
+    .search-field {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 200px;
+      max-width: 280px;
+      padding: 4px 10px;
+      background: rgba(255,255,255,0.85);
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      box-shadow: inset 0 1px 1px rgba(0,0,0,0.04);
+    }
+    .search-field:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    .search-field input {
+      flex: 1;
+      border: none;
+      outline: none;
+      background: transparent;
+      font-family: inherit;
+      font-size: 12px;
+      color: var(--text);
+    }
+    .search-field input::placeholder { color: var(--text-tertiary); }
+    .search-field svg { width: 14px; height: 14px; color: var(--text-tertiary); flex-shrink: 0; }
+
+    .tb-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      background: rgba(255,255,255,0.55);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .tb-btn:hover {
+      background: #fff;
+      border-color: var(--border-strong);
+    }
+    .tb-btn svg { width: 14px; height: 14px; }
+
+    /* 三栏分割：左窄侧栏 + 中画布 + 右检查器 —— 非单列堆叠 */
+    .split-root {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+      background: var(--bg-content);
+    }
+
+    /* 左侧：Finder 式侧栏 */
+    .sidebar {
+      width: 220px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      backdrop-filter: blur(14px);
+    }
+    .sidebar-header {
+      padding: 12px 12px 6px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+    }
+    .filter-list {
+      padding: 0 8px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      overflow-y: auto;
+    }
+    .filter-chip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: background 0.12s, color 0.12s;
+    }
+    .filter-chip:hover { background: rgba(0,0,0,0.04); color: var(--text); }
+    .filter-chip.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .filter-chip .count {
+      font-size: 10px;
+      color: var(--text-tertiary);
+      font-variant-numeric: tabular-nums;
+    }
+    .filter-chip.active .count { color: var(--accent); opacity: 0.85; }
+
+    .sidebar-search {
+      padding: 0 10px 10px;
+    }
+    .sidebar-search .search-field {
+      max-width: none;
+      min-width: 0;
+      width: 100%;
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text-tertiary);
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 4px 0;
+    }
+    .stat-row strong {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* 中间：画布「文档区」 */
+    .canvas-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: linear-gradient(180deg, #fafafa 0%, #f3f3f5 100%);
+    }
+    .canvas-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.5);
+    }
+    .canvas-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .canvas-toolbar .hint {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--text-tertiary);
+    }
+
+    .canvas-body {
+      flex: 1;
+      position: relative;
+      margin: 12px;
+      border-radius: var(--radius-panel);
+      background: var(--bg-panel-solid);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-panel);
+      overflow: hidden;
+    }
+    .canvas-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        radial-gradient(circle at 1px 1px, rgba(0,0,0,0.06) 1px, transparent 0);
+      background-size: 18px 18px;
+      opacity: 0.7;
+    }
+    .canvas-placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: var(--text-tertiary);
+      text-align: center;
+      padding: 24px;
+    }
+    .canvas-placeholder svg {
+      width: 40px;
+      height: 40px;
+      opacity: 0.35;
+    }
+    .canvas-placeholder h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .canvas-placeholder p {
+      font-size: 12px;
+      max-width: 320px;
+      line-height: 1.5;
+    }
+
+    /* 右侧：检查器 */
+    .inspector {
+      width: 300px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      background: rgba(252, 252, 252, 0.92);
+      border-left: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+    }
+    .inspector-header {
+      padding: 12px 14px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+    }
+    .inspector-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 12px 12px;
+    }
+    .inspector-empty {
+      height: 100%;
+      min-height: 200px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      text-align: center;
+      color: var(--text-tertiary);
+      padding: 20px;
+    }
+    .inspector-empty svg { width: 36px; height: 36px; opacity: 0.4; }
+    .inspector-empty h4 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .inspector-empty p { font-size: 12px; line-height: 1.45; }
+
+    .group-box {
+      background: var(--bg-panel-solid);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.8) inset;
+    }
+    .group-box h5 {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-tertiary);
+      margin-bottom: 6px;
+    }
+    .group-box .row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      padding: 3px 0;
+      color: var(--text-secondary);
+    }
+    .group-box .row span:last-child {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .inspector-actions {
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+    }
+    .btn {
+      flex: 1;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-strong);
+      background: linear-gradient(180deg, #fff 0%, #f2f2f3 100%);
+      color: var(--text);
+      cursor: pointer;
+      transition: filter 0.12s, box-shadow 0.12s;
+    }
+    .btn:hover { filter: brightness(1.02); }
+    .btn:active { filter: brightness(0.98); }
+    .btn-primary {
+      border-color: rgba(0, 122, 255, 0.45);
+      background: linear-gradient(180deg, #4da2ff 0%, #007aff 100%);
+      color: #fff;
+    }
+
+    /* 底部状态条：单行信息，非知识库那种操作条 */
+    .statusline {
+      height: 24px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      font-size: 11px;
+      color: var(--text-tertiary);
+      background: linear-gradient(180deg, #e9e9eb 0%, #e2e2e5 100%);
+      border-top: 1px solid var(--border);
+    }
+    .statusline .sep { margin: 0 8px; opacity: 0.5; }
+
+    @media (max-width: 900px) {
+      body { padding: 12px; }
+      .mac-window { height: calc(100vh - 24px); width: 100%; }
+      .inspector { width: 260px; }
+      .sidebar { width: 190px; }
+    }
+    @media (max-width: 720px) {
+      .split-root { flex-direction: column; }
+      .sidebar, .inspector {
+        width: 100%;
+        border-right: none;
+        border-left: none;
+        border-bottom: 1px solid var(--border);
+      }
+      .canvas-pane { min-height: 280px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="mac-window" role="application" aria-label="知识图谱">
+    <header class="titlebar">
+      <div class="titlebar-title">知识图谱 — GRAPH WORKSPACE</div>
+      <span class="titlebar-hint">可视化关系与路径</span>
+    </header>
+
+    <div class="toolbar">
+      <div class="segmented" role="tablist" aria-label="视图模式">
+        <button type="button" id="viewGraph" aria-pressed="true">图谱</button>
+        <button type="button" id="viewList" aria-pressed="false">列表</button>
+        <button type="button" id="viewPath" aria-pressed="false">路径</button>
+      </div>
+      <button type="button" class="tb-btn" id="btnLayout" title="重新布局">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+        布局
+      </button>
+      <div class="toolbar-spacer"></div>
+      <div class="search-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input type="search" id="graphSearch" placeholder="搜索知识点…" autocomplete="off" />
+      </div>
+      <button type="button" class="tb-btn" id="btnSync">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+        同步
+      </button>
+    </div>
+
+    <div class="split-root">
+      <aside class="sidebar" aria-label="过滤器与图例">
+        <div class="sidebar-header">域与筛选</div>
+        <nav class="filter-list" id="domainFilters">
+          <button type="button" class="filter-chip active" data-domain="all">全部<span class="count">—</span></button>
+          <button type="button" class="filter-chip" data-domain="python">Python<span class="count">1</span></button>
+          <button type="button" class="filter-chip" data-domain="java">Java<span class="count">1</span></button>
+          <button type="button" class="filter-chip" data-domain="algo">算法<span class="count">0</span></button>
+          <button type="button" class="filter-chip" data-domain="ds">数据结构<span class="count">0</span></button>
+          <button type="button" class="filter-chip" data-domain="web">Web<span class="count">0</span></button>
+        </nav>
+        <div class="sidebar-search">
+          <div class="search-field">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+            <input type="search" id="sidebarSearch" placeholder="侧栏过滤…" />
+          </div>
+        </div>
+        <div class="sidebar-footer">
+          <div class="stat-row"><span>节点总数</span><strong id="nodeTotal">0</strong></div>
+          <div class="stat-row"><span>关系边</span><strong id="edgeTotal">0</strong></div>
+        </div>
+      </aside>
+
+      <section class="canvas-pane" aria-label="图谱画布">
+        <div class="canvas-toolbar">
+          <span class="canvas-title">画布</span>
+          <span class="hint">拖拽平移 · 滚轮缩放 · 点击节点查看右侧详情</span>
+        </div>
+        <div class="canvas-body">
+          <div class="canvas-grid" aria-hidden="true"></div>
+          <div class="canvas-placeholder" id="canvasPlaceholder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+            <h3>图谱将在此渲染</h3>
+            <p>连接后端或导入课程知识数据后，可在此展示节点、边与先修路径。当前为占位画布，结构与知识库页面不同。</p>
+          </div>
+        </div>
+      </section>
+
+      <aside class="inspector" aria-label="节点详情与路径">
+        <div class="inspector-header">检查器</div>
+        <div class="inspector-body">
+          <div class="inspector-empty" id="inspectorEmpty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
+            <h4>选择一个知识点</h4>
+            <p>在图谱中点击节点后，此处显示释义、难度、先修与后续建议动作。</p>
+          </div>
+          <div id="inspectorContent" hidden>
+            <div class="group-box">
+              <h5>节点</h5>
+              <div class="row"><span>名称</span><span id="inspName">—</span></div>
+              <div class="row"><span>域</span><span id="inspDomain">—</span></div>
+            </div>
+            <div class="group-box">
+              <h5>路径</h5>
+              <div class="row"><span>先修深度</span><span id="inspDepth">—</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="inspector-actions">
+          <button type="button" class="btn" id="btnExport">导出子图</button>
+          <button type="button" class="btn btn-primary" id="btnOpenCourse">关联课程</button>
+        </div>
+      </aside>
+    </div>
+
+    <footer class="statusline">
+      <span>就绪</span><span class="sep">|</span><span id="statusView">视图：图谱</span><span class="sep">|</span><span>筛选：<span id="statusFilter">全部</span></span>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      const seg = document.querySelectorAll('.segmented button');
+      const statusView = document.getElementById('statusView');
+      const statusFilter = document.getElementById('statusFilter');
+      const filters = document.querySelectorAll('.filter-chip');
+
+      seg.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          seg.forEach((b) => b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'));
+          const label = { viewGraph: '图谱', viewList: '列表', viewPath: '路径' }[btn.id] || '—';
+          statusView.textContent = '视图：' + label;
+        });
+      });
+
+      filters.forEach((chip) => {
+        chip.addEventListener('click', () => {
+          filters.forEach((c) => c.classList.remove('active'));
+          chip.classList.add('active');
+          const d = chip.dataset.domain;
+          const map = { all: '全部', python: 'Python', java: 'Java', algo: '算法', ds: '数据结构', web: 'Web' };
+          statusFilter.textContent = map[d] || d;
+        });
+      });
+
+      document.getElementById('btnLayout').addEventListener('click', () => {
+        statusView.textContent = '视图：图谱';
+        alert('演示：可在此处触发力导向布局或层次布局。');
+      });
+      document.getElementById('btnSync').addEventListener('click', () => {
+        alert('演示：从课程知识库同步节点与关系。');
+      });
+      document.getElementById('btnExport').addEventListener('click', () => alert('演示：导出当前子图为 JSON / PNG。'));
+      document.getElementById('btnOpenCourse').addEventListener('click', () => alert('演示：跳转到关联课程单元。'));
+
+      document.getElementById('graphSearch').addEventListener('input', (e) => {
+        /* 预留：与图谱联动 */
+        console.debug('graph search', e.target.value);
+      });
+    })();
+  </script>
+</body>
+</html>
