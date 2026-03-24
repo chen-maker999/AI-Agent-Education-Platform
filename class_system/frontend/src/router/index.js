@@ -46,6 +46,16 @@ const routes = [
     )
   },
   {
+    path: '/agent-config',
+    name: 'AgentConfig',
+    component: () => import('@/views/AgentConfig.vue'),
+    meta: shellMeta(
+      'Agent配置',
+      ['student', 'teacher', 'admin'],
+      '配置 AI Agent 的行为模式、工具能力、响应风格和安全边界。'
+    )
+  },
+  {
     path: '/knowledge',
     name: 'Knowledge',
     component: () => import('@/views/Knowledge.vue'),

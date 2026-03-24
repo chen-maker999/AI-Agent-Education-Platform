@@ -98,6 +98,11 @@ const icons = {
     { tag: 'circle', attrs: { cx: 12, cy: 12, r: 2 } }
   ],
   flash: [{ tag: 'path', attrs: { d: 'M13 2 4 14h6l-1 8 9-12h-6l1-8Z' } }],
+  cpu: [
+    { tag: 'rect', attrs: { x: 4, y: 4, width: 16, height: 16, rx: 2 } },
+    { tag: 'rect', attrs: { x: 9, y: 9, width: 6, height: 6 } },
+    { tag: 'path', attrs: { d: 'M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2' } }
+  ],
   layers: [
     { tag: 'path', attrs: { d: 'm12 4 8 4-8 4-8-4 8-4Z' } },
     { tag: 'path', attrs: { d: 'm4 12 8 4 8-4' } },

@@ -160,6 +160,7 @@ const navSections = computed(() => {
     { label: 'Workspace', items: [
       { to: '/dashboard', label: '总览', icon: 'layout' },
       { to: '/chat', label: '智能问答', icon: 'spark' },
+      { to: '/agent-config', label: 'Agent配置', icon: 'cpu' },
       { to: '/knowledge', label: '知识资产', icon: 'database' },
       { to: '/graph', label: '知识图谱', icon: 'graph' }
     ]},
