@@ -44,6 +44,8 @@ from services.knowledge.rerank.main import router as rerank_router
 from services.knowledge.trimmer.main import router as trimmer_router
 from services.knowledge.rag.main import router as rag_router
 from services.knowledge.library.main import router as library_router
+from services.knowledge.bm25_search.main import router as bm25_router
+from services.knowledge.graph_search.main import router as graph_search_router
 from services.intelligence.chat.main import router as chat_router
 from services.intelligence.annotation.main import router as annotation_router
 from services.intelligence.evaluate.main import router as evaluate_router
@@ -59,6 +61,17 @@ from services.agent.destroy.main import router as agent_destroy_router
 from services.agent.tools.main import router as agent_tools_router
 from services.agent.crud.main import router as agent_crud_router
 from services.visual.display.main import router as visual_router
+from services.knowledge.monitoring.main import router as monitoring_router
+from services.knowledge.monitoring.metrics_pusher import router as metrics_pusher_router
+from services.knowledge.streaming.main import router as streaming_router
+from services.knowledge.prompt.main import router as prompt_router
+
+# P11 RAG 优化新增服务
+from services.knowledge.cache.semantic_cache import router as semantic_cache_router
+from services.knowledge.chunk.semantic_chunking import router as semantic_chunk_router
+from services.knowledge.graphrag.main import router as graphrag_router
+from services.knowledge.trr.main import router as trr_router
+from services.knowledge.evaluation.ragas_evaluation import router as ragas_router
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -83,6 +96,14 @@ async def startup_event():
     """Create database tables on startup."""
     from sqlalchemy import text
     from common.database.postgresql import async_engine
+    
+    # P11 新增：启动时预加载 Cross-Encoder 重排序模型
+    try:
+        from services.knowledge.rerank.main import initialize_reranker
+        initialize_reranker(model_name="bge-reranker-base")
+        print("✅ Cross-Encoder 重排序模型已预加载")
+    except Exception as e:
+        print(f"⚠️ Cross-Encoder 重排序模型预加载失败：{e}")
 
     # 不再删除旧表，保留数据
     # 只有在需要重建表时才执行删除操作
@@ -302,6 +323,39 @@ async def startup_event():
     except Exception as e:
         print(f"Seed user warning: {e}")
 
+    # Initialize default Prompt templates
+    from services.knowledge.prompt.main import init_default_prompts
+    try:
+        await init_default_prompts()
+        print("Default Prompt templates initialized!")
+    except Exception as e:
+        print(f"Init prompts warning: {e}")
+
+    # 预加载重排序模型 (P11 优化：移除动态加载，确保重排序始终可用)
+    from services.knowledge.rerank.main import initialize_reranker
+    try:
+        initialize_reranker(model_name="bge-reranker-base")
+        print("Cross-Encoder Reranker 模型预加载成功!")
+    except Exception as e:
+        print(f"预加载重排序模型失败：{e}，将在首次请求时加载")
+
+    # 初始化语义缓存 (P11 优化：基于向量相似度的缓存复用)
+    from services.knowledge.cache.semantic_cache import initialize_cache, SemanticCacheConfig
+    try:
+        cache_config = SemanticCacheConfig(
+            max_size=1000,
+            default_ttl=3600,
+            similarity_threshold=0.85
+        )
+        await initialize_cache(cache_config)
+        print("语义缓存初始化成功!")
+    except Exception as e:
+        print(f"语义缓存初始化失败：{e}")
+
+    # 初始化 GraphRAG 引擎 (P11 优化：图结构增强向量检索)
+    from services.knowledge.graphrag.main import build_graphrag_from_neo4j
+    # 注意：GraphRAG 引擎在首次请求时懒加载，避免启动时 Neo4j 未就绪
+
 
 @app.get("/", response_model=ResponseModel)
 async def root():
@@ -356,6 +410,8 @@ app.include_router(rerank_router, prefix=settings.API_PREFIX)
 app.include_router(trimmer_router, prefix=settings.API_PREFIX)
 app.include_router(rag_router, prefix=settings.API_PREFIX)
 app.include_router(library_router, prefix=settings.API_PREFIX)
+app.include_router(bm25_router, prefix=settings.API_PREFIX)
+app.include_router(graph_search_router, prefix=settings.API_PREFIX)
 app.include_router(chat_router, prefix=settings.API_PREFIX)
 app.include_router(annotation_router, prefix=settings.API_PREFIX)
 app.include_router(evaluate_router, prefix=settings.API_PREFIX)
@@ -371,6 +427,17 @@ app.include_router(agent_destroy_router, prefix=settings.API_PREFIX)
 app.include_router(agent_tools_router, prefix=settings.API_PREFIX)
 app.include_router(agent_crud_router, prefix=settings.API_PREFIX)
 app.include_router(visual_router, prefix=settings.API_PREFIX)
+app.include_router(monitoring_router, prefix=settings.API_PREFIX)
+app.include_router(metrics_pusher_router, prefix=settings.API_PREFIX)
+app.include_router(streaming_router, prefix=settings.API_PREFIX)
+app.include_router(prompt_router, prefix=settings.API_PREFIX)
+
+# P11 RAG 优化新增路由
+app.include_router(semantic_cache_router, prefix=settings.API_PREFIX)
+app.include_router(semantic_chunk_router, prefix=settings.API_PREFIX)
+app.include_router(graphrag_router, prefix=settings.API_PREFIX)
+app.include_router(trr_router, prefix=settings.API_PREFIX)
+app.include_router(ragas_router, prefix=settings.API_PREFIX)
 
 
 if __name__ == "__main__":

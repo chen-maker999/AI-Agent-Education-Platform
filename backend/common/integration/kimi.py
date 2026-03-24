@@ -2,7 +2,7 @@
 
 import json
 import asyncio
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, AsyncGenerator
 from common.core.config import settings
 import httpx
 
@@ -108,6 +108,75 @@ class KimiClient:
             return result["choices"][0]["message"]["content"]
         return result.get("error", "Unknown error")
 
+    async def chat_stream(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+        **kwargs
+    ) -> AsyncGenerator[str, None]:
+        """Send chat completion request with streaming response."""
+        if not self.api_key:
+            yield "API key not configured"
+            return
+
+        url = f"{self.endpoint}/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True  # 启用流式输出
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                async with client.stream("POST", url, json=payload, headers=headers) as response:
+                    if response.status_code == 200:
+                        async for line in response.aiter_lines():
+                            if line.startswith("data: "):
+                                data = line[6:]  # 去掉 "data: " 前缀
+                                if data.strip() == "[DONE]":
+                                    break
+                                try:
+                                    chunk_data = json.loads(data)
+                                    choices = chunk_data.get("choices", [])
+                                    if choices:
+                                        delta = choices[0].get("delta", {})
+                                        content = delta.get("content", "")
+                                        if content:
+                                            yield content
+                                except json.JSONDecodeError:
+                                    continue
+                    else:
+                        error_text = await response.aread()
+                        yield f"Error: {response.status_code} - {error_text.decode()}"
+
+        except httpx.RequestError as e:
+            yield f"Connection error: {str(e)}"
+        except asyncio.TimeoutError:
+            yield f"Request timeout"
+        except Exception as e:
+            yield f"Error: {str(e)}"
+
+    async def chat_stream_simple(
+        self,
+        prompt: str,
+        system_prompt: str = "You are a helpful teaching assistant.",
+        **kwargs
+    ) -> AsyncGenerator[str, None]:
+        """Simple streaming chat completion."""
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ]
+        async for chunk in self.chat_stream(messages, **kwargs):
+            yield chunk
+
 
 # Singleton instance
 kimi_client = KimiClient()
@@ -120,3 +189,13 @@ async def get_kimi_response(
 ) -> str:
     """Get response from Kimi API."""
     return await kimi_client.chat_completion(prompt, system_prompt, **kwargs)
+
+
+async def get_kimi_stream(
+    prompt: str,
+    system_prompt: str = "You are a helpful teaching assistant.",
+    **kwargs
+) -> AsyncGenerator[str, None]:
+    """Get streaming response from Kimi API."""
+    async for chunk in kimi_client.chat_stream_simple(prompt, system_prompt, **kwargs):
+        yield chunk

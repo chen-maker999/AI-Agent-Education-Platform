@@ -1,0 +1,36 @@
+# 敏感凭证 - 所有子目录
+**/CREDENTIALS.md
+**/.env
+**/.env.example
+
+# Python 虚拟环境
+**/.venv/
+**/venv/
+**/__pycache__/
+
+# IDE
+**/.idea/
+**/.vscode/
+
+# 恢复 backend/.env 和 backend/.env.example 的忽略
+/backend/.env
+/backend/.env.example
+
+# 大文件 - RAG 数据
+rag-data.zip
+rag-data/
+
+# macOS 资源叉文件
+__MACOSX/
+.DS_Store
+
+# Qwen 配置
+.qwen/
+
+# 报告和测试生成文件
+backend/*_Report.md
+backend/golden_docs/
+backend/data/
+backend/config/
+backend/evaluation_tools/
+backend/tests/

@@ -767,6 +767,3 @@ async def preview_worksheet(worksheet_id: str):
                 "exercises": exercises
             }
         )
-
-
-@router.get("/list", response_model=ResponseModel)
