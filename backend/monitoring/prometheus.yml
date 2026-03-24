@@ -1,0 +1,76 @@
+# Prometheus 配置文件 - RAG 系统监控
+# 用于抓取 RAG 系统各项性能指标
+
+global:
+  scrape_interval: 15s      # 默认抓取间隔
+  evaluation_interval: 15s  # 规则评估间隔
+  scrape_timeout: 10s       # 抓取超时时间
+
+# 告警管理器配置
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# 告警规则文件
+rule_files:
+  - "rag_alerts.yml"
+
+# 抓取配置
+scrape_configs:
+  # Prometheus 自监控
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          instance: 'prometheus'
+
+  # RAG 应用服务监控
+  - job_name: 'rag-application'
+    static_configs:
+      - targets: ['host.docker.internal:8000']
+        labels:
+          instance: 'rag-backend'
+          service: 'knowledge'
+    metrics_path: '/api/v1/monitoring/metrics'
+    # 如果运行在 Docker 中，使用以下配置
+    # relabel_configs:
+    #   - source_labels: [__address__]
+    #     target_label: __address__
+    #     regex: '([^:]+)(?::\d+)?'
+    #     replacement: '$1:8000'
+
+  # Node Exporter - 服务器资源监控
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          instance: 'rag-server'
+
+  # Redis 监控
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          instance: 'edu-redis'
+
+  # Elasticsearch 监控
+  - job_name: 'elasticsearch'
+    static_configs:
+      - targets: ['elasticsearch-exporter:9114']
+        labels:
+          instance: 'edu-elasticsearch'
+
+  # Neo4j 图数据库监控
+  - job_name: 'neo4j'
+    static_configs:
+      - targets: ['neo4j-exporter:9400']
+        labels:
+          instance: 'edu-neo4j'
+
+  # PostgreSQL 监控 (如果有 postgres-exporter)
+  # - job_name: 'postgresql'
+  #   static_configs:
+  #     - targets: ['postgres-exporter:9187']
+  #       labels:
+  #         instance: 'edu-postgres'

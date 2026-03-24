@@ -418,8 +418,21 @@ async def get_status():
     }
 
 
-# @router.on_event("startup")
-# async def startup_event():
-#     """启动时初始化"""
-#     init_elasticsearch()
-#     create_index()
+@router.on_event("startup")
+async def startup_event():
+    """启动时初始化 Elasticsearch"""
+    init_elasticsearch()
+    if es_available:
+        create_index()
+        print("[ES-Indexer] Elasticsearch 初始化完成")
+    else:
+        print("[ES-Indexer] Elasticsearch 不可用，使用内存降级方案")
+
+
+@router.on_event("shutdown")
+async def shutdown_event():
+    """关闭时清理资源"""
+    global es_client
+    if es_client:
+        es_client.close()
+        print("[ES-Indexer] Elasticsearch 连接已关闭")

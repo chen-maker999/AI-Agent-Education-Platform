@@ -1,0 +1,195 @@
+# RAG 系统告警规则配置
+# 定义关键性能指标的告警阈值
+
+groups:
+  - name: rag_alerts
+    interval: 30s
+    rules:
+      # ==================== 服务可用性告警 ====================
+      - alert: RAGServiceDown
+        expr: up{job="rag-application"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RAG 服务宕机"
+          description: "RAG 应用服务 {{ $labels.instance }} 已宕机超过 1 分钟"
+
+      - alert: PrometheusTargetDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "监控目标宕机"
+          description: "监控目标 {{ $labels.job }}/{{ $labels.instance }} 已宕机超过 2 分钟"
+
+      # ==================== 延迟告警 ====================
+      - alert: HighRequestLatency
+        expr: histogram_quantile(0.95, rate(rag_request_latency_seconds_bucket[5m])) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RAG 请求延迟过高"
+          description: "P95 请求延迟为 {{ $value }} 秒，超过 1 秒阈值"
+
+      - alert: CriticalRequestLatency
+        expr: histogram_quantile(0.95, rate(rag_request_latency_seconds_bucket[5m])) > 3.0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RAG 请求延迟严重过高"
+          description: "P95 请求延迟为 {{ $value }} 秒，超过 3 秒阈值"
+
+      - alert: HighRetrievalLatency
+        expr: histogram_quantile(0.95, rate(retrieval_latency_seconds_bucket[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "检索延迟过高"
+          description: "检索 P95 延迟为 {{ $value }} 秒，超过 0.5 秒阈值"
+
+      - alert: HighLLMLatency
+        expr: histogram_quantile(0.95, rate(llm_generation_latency_seconds_bucket[5m])) > 10.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM 生成延迟过高"
+          description: "LLM P95 生成延迟为 {{ $value }} 秒，超过 10 秒阈值"
+
+      # ==================== 错误率告警 ====================
+      - alert: HighErrorRate
+        expr: rate(errors_total[5m]) / rate(rag_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RAG 错误率过高"
+          description: "错误率为 {{ $value | humanizePercentage }}, 超过 5% 阈值"
+
+      - alert: CriticalErrorRate
+        expr: rate(errors_total[5m]) / rate(rag_requests_total[5m]) > 0.10
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RAG 错误率严重过高"
+          description: "错误率为 {{ $value | humanizePercentage }}, 超过 10% 阈值"
+
+      # ==================== 缓存性能告警 ====================
+      - alert: LowCacheHitRate
+        expr: sum(rate(cache_hits_total[5m])) / (sum(rate(cache_hits_total[5m])) + sum(rate(cache_misses_total[5m]))) < 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "缓存命中率过低"
+          description: "缓存命中率为 {{ $value | humanizePercentage }}, 低于 50% 阈值"
+
+      # ==================== 资源使用告警 ====================
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "内存使用率过高"
+          description: "内存使用率为 {{ $value | humanizePercentage }}, 超过 85% 阈值"
+
+      - alert: HighDiskUsage
+        expr: (node_filesystem_size_bytes - node_filesystem_avail_bytes) / node_filesystem_size_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "磁盘使用率过高"
+          description: "磁盘使用率为 {{ $value | humanizePercentage }}, 超过 85% 阈值"
+
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU 使用率过高"
+          description: "CPU 使用率为 {{ $value }}%, 超过 80% 阈值"
+
+      # ==================== Elasticsearch 告警 ====================
+      - alert: ElasticsearchClusterHealthRed
+        expr: elasticsearch_cluster_health_status{color="red"} == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Elasticsearch 集群状态严重"
+          description: "Elasticsearch 集群状态为 RED，可能存在数据丢失风险"
+
+      - alert: ElasticsearchClusterHealthYellow
+        expr: elasticsearch_cluster_health_status{color="yellow"} == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elasticsearch 集群状态警告"
+          description: "Elasticsearch 集群状态为 YELLOW，副本分片未分配"
+
+      - alert: ElasticsearchNodeDown
+        expr: elasticsearch_cluster_health_number_of_nodes < 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Elasticsearch 节点宕机"
+          description: "Elasticsearch 集群节点数少于预期"
+
+      # ==================== Redis 告警 ====================
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis 服务宕机"
+          description: "Redis 实例 {{ $labels.instance }} 已宕机"
+
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis 内存使用率过高"
+          description: "Redis 内存使用率为 {{ $value | humanizePercentage }}"
+
+      # ==================== Neo4j 告警 ====================
+      - alert: Neo4jDown
+        expr: neo4j_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Neo4j 服务宕机"
+          description: "Neo4j 实例 {{ $labels.instance }} 已宕机"
+
+      # ==================== 业务指标告警 ====================
+      - alert: LowRequestRate
+        expr: rate(rag_requests_total[10m]) < 0.1
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "RAG 请求量过低"
+          description: "过去 15 分钟内请求量异常低，可能存在服务异常"
+
+      - alert: HighFusionInputCount
+        expr: fusion_input_count > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "融合输入文档数过多"
+          description: "融合输入文档数为 {{ $value }}, 超过 100 阈值，可能影响性能"
