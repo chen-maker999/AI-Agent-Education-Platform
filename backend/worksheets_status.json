@@ -1,0 +1,15 @@
+{
+  "total": 2,
+  "samples": [
+    {
+      "id": "ws_1774441728.731386",
+      "title": "Test",
+      "first_q": "在Python中，以下哪个选项是正确的整数（int）类型表示？"
+    },
+    {
+      "id": "ws_1774446532.680063",
+      "title": "java",
+      "first_q": "根据文档中提供的信息，Core Java Volume I – Fundamentals的版权属于哪家公司？"
+    }
+  ]
+}

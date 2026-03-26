@@ -85,7 +85,8 @@ export const homeworkApi = {
   list: (params) => api.get('/homework/', { params }),
   presigned: (id) => api.get(`/homework/${id}/presigned`),
   statistics: () => api.get('/homework/statistics/summary'),
-  updateStatus: (id, status) => api.patch(`/homework/${id}/status`, { status })
+  updateStatus: (id, status) =>
+    api.patch(`/homework/${id}/status`, null, { params: { status } })
 }
 
 export const portraitApi = {
@@ -238,6 +239,29 @@ export const configApi = {
   get: (key) => api.get(`/config/${key}`),
   set: (key, value) => api.put(`/config/${key}`, { value }),
   list: () => api.get('/config')
+}
+
+export const reviewApi = {
+  // Kimi AI 智能批改（GET，返回批改结果）
+  grade: (homeworkId) => api.get(`/homework_review/ai-grade/${homeworkId}`),
+  // 获取批改详情
+  get: (reviewId) => api.get(`/homework_review/${reviewId}`),
+  // 下载批改后文件
+  download: (reviewId) => api.get(`/homework_review/${reviewId}/download`),
+  // 列出批改记录
+  list: (params) => api.get('/homework_review/list', { params }),
+  // 删除批改记录
+  delete: (reviewId) => api.delete(`/homework_review/${reviewId}`),
+  // 轮询批改状态（支持 SSE 流式进度）
+  gradeStream: (homeworkId) => {
+    const token = localStorage.getItem('token')
+    return fetch(`/api/v1/homework_review/ai-grade/${homeworkId}`, {
+      method: 'GET',
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    })
+  }
 }
 
 export default api

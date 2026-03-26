@@ -1,0 +1,102 @@
+学号：                姓名：                班级：
+import java.util.*
+class EngineConfig implements Cloneable {
+String engineID;
+public EngineConfig(String engineID) {
+engineID = engineID;
+}
+@Override
+public EngineConfig clone(){
+return (EngineConfig) super.clone();
+}
+@Override
+public String toString();
+}
+class Spaceship implements Cloneable {
+private double fuel;
+private EngineConfig engine;
+private static int totalInstances;
+public Spaceship(double fuel, String engineID) {
+this.fuel = fuel;
+this.engine = new EngineConfig(engineID);
+}
+public static int getTotalInstances() {
+return this.totalInstances;
+}
+public double getFuel() {
+return fuel;
+}
+public void setEngine(EngineConfig engine) {
+this.engine = engine;
+}
+public EngineConfig getEngine() {
+return engine;
+}
+@Override
+public Spaceship clone() throws CloneNotSupportedException {
+Spaceship cloned = (Spaceship) super.clone();
+cloned.engine = this.engine.clone();
+return cloned;
+}
+}
+class CargoShuttle {
+private double cargoCapacity;
+public CargoShuttle(double fuel, String engineID, double cargoCapacity) {
+Spaceship(fuel, engineID);
+this.cargoCapacity = cargoCapacity;
+}
+public void loadCargo(double amount) {
+}
+public void unloadCargo() {
+this.cargoCapacity = 0;
+}
+double getCargoCapacity() {
+return cargoCapacity;
+}
+@Override
+public CargoShuttle clone() throws CloneNotSupportedException {
+return super.clone();
+}
+@Override
+public String toString() {
+return getFuel() + getEngine() + cargoCapacity;
+}
+}
+class ExplorerProbe extends Spaceship {
+private ArrayList<String> scientificInstruments;
+public ExplorerProbe(double fuel, String engineID, String... instruments) {
+super(fuel, engineID);
+for (String instrument : instruments) {
+this.scientificInstruments.add(instrument);
+}
+}
+public void addInstrument(String instrument) {
+add(instrument);
+}
+@Override
+public ExplorerProbe clone() throws CloneNotSupportedException {
+ExplorerProbe cloned = (ExplorerProbe) super.clone();
+return cloned;
+}
+@Override
+public String toString() {
+return "ExplorerProbe [fuel=" + getFuel() + ", engine=" + getEngine() + ", scientificInstruments="
++ scientificInstruments + ]";
+}
+}
+public class SpaceControlCenter {
+public static void main(String[] args) throws Exception {
+ArrayList<Spaceship> fleet = new ArrayList<>();
+fleet.add(CargoShuttle(5000, "CT-001", 10000));
+fleet.add(ExplorerProbe(300, "EP-ALPHA", "Spectrometer", "Camera"));
+fleet.add(fleet.get(0).clone());
+(fleet.get(2)).loadCargo(500);
+fleet.get(2).getEngine().setEngineID("CT-COPY");
+(fleet.get(1)).addInstrument("Laser Drill");
+Collections.sort(fleet);
+for (Spaceship spaceship : fleet) {
+System.out.println(spaceship);
+}
+System.out.println("Total spacecraft: " + Spaceship.getTotalInstances());
+}
+}

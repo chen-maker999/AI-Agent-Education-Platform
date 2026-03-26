@@ -181,10 +181,11 @@ async def get_download_url(
         object_name = f"{homework.student_id}/{homework_id}/{homework.filename}"
         
         try:
+            from datetime import timedelta
             presigned_url = client.presigned_get_object(
                 settings.MINIO_BUCKET_HOMEWORK,
                 object_name,
-                expires=expires
+                expires=timedelta(seconds=expires)
             )
         except S3Error:
             # Fallback to direct URL if presigned fails
@@ -346,17 +347,18 @@ async def get_presigned_url(
         object_name = f"{homework.student_id}/{homework_id}/{homework.filename}"
         
         try:
+            from datetime import timedelta
             if method == "GET":
                 presigned_url = client.presigned_get_object(
                     settings.MINIO_BUCKET_HOMEWORK,
                     object_name,
-                    expires=expires
+                    expires=timedelta(seconds=expires)
                 )
             else:
                 presigned_url = client.presigned_put_object(
                     settings.MINIO_BUCKET_HOMEWORK,
                     object_name,
-                    expires=expires
+                    expires=timedelta(seconds=expires)
                 )
         except S3Error:
             presigned_url = homework.file_url

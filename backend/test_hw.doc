@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>SignatureDoesNotMatch</Code><Message>The request signature we calculated does not match the signature you provided. Check your key and signing method.</Message><Key>68ddba34-d819-40b3-b40d-8688a5d0d297/1774491224296/对象与类作业-批改.doc</Key><BucketName>edu-homework</BucketName><Resource>/edu-homework/68ddba34-d819-40b3-b40d-8688a5d0d297/1774491224296/对象与类作业-批改.doc</Resource><RequestId>18A0437FDCC1ED34</RequestId><HostId>dd9025bab4ad464b049177c95eb6ebf374d3b3fd1af9251148b658df7ac2e3e8</HostId></Error>

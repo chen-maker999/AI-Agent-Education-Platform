@@ -24,6 +24,7 @@ from services.base.scheduler.main import router as scheduler_router
 from services.base.cache.main import router as cache_router
 from services.data.collect.main import router as collect_router
 from services.data.homework.main import router as homework_router
+from services.data.homework_review.main import router as homework_review_router
 from services.data.portrait.main import router as portrait_router
 from services.data.timeseries.main import router as timeseries_router
 from services.data.feedback.main import router as feedback_router
@@ -115,6 +116,30 @@ async def startup_event():
             status VARCHAR(50) DEFAULT 'pending',
             course VARCHAR(100),
             note TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        # 作业批改记录表
+        """CREATE TABLE IF NOT EXISTS homework_reviews (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            review_id VARCHAR(255) UNIQUE NOT NULL,
+            homework_id VARCHAR(255) NOT NULL,
+            student_id VARCHAR(255) NOT NULL,
+            original_filename VARCHAR(500),
+            graded_filename VARCHAR(500),
+            graded_file_url TEXT,
+            file_size INTEGER,
+            score FLOAT,
+            total_score FLOAT DEFAULT 100,
+            grading_status VARCHAR(50) DEFAULT 'pending',
+            course VARCHAR(100),
+            issue_count INTEGER DEFAULT 0,
+            issues_json TEXT,
+            code_issues JSONB DEFAULT '[]',
+            original_content TEXT,
+            grading_model VARCHAR(100) DEFAULT 'rule-based',
+            grading_time TIMESTAMP,
+            review_details JSONB DEFAULT '{}',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""",
@@ -337,6 +362,7 @@ app.include_router(scheduler_router, prefix=settings.API_PREFIX)
 app.include_router(cache_router, prefix=settings.API_PREFIX)
 app.include_router(collect_router, prefix=settings.API_PREFIX)
 app.include_router(homework_router, prefix=settings.API_PREFIX)
+app.include_router(homework_review_router, prefix=settings.API_PREFIX)
 app.include_router(portrait_router, prefix=settings.API_PREFIX)
 app.include_router(timeseries_router, prefix=settings.API_PREFIX)
 app.include_router(feedback_router, prefix=settings.API_PREFIX)

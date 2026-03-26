@@ -1,0 +1,77 @@
+============================================================
+作业批改报告
+============================================================
+
+课程: 面向对象程序设计（Java）
+学生ID: test_student_001
+批改时间: 2026-03-26 11:55:55
+
+【评分】 40 / 100
+
+【总评】
+学生的作业存在多处严重错误，包括语法错误、逻辑错误以及代码结构问题。需要重写大部分代码以满足面向对象程序设计的基本要求。
+
+【优点】
+  1. 代码中体现了面向对象程序设计的基本概念，如类的定义、继承和克隆方法的重写。
+
+【需要改进的地方】
+  1. 代码中存在大量非打印字符和乱码，可能是编码问题或复制粘贴时格式错误。
+  2. 类成员变量未正确使用this关键字进行初始化。
+  3. clone方法未正确实现深拷贝。
+  4. 部分方法缺少实现体。
+  5. 类成员变量和方法的访问权限设置不当。
+  6. toString方法的实现不正确。
+  7. 代码中存在未定义的方法调用。
+  8. 类继承和多态使用不当。
+  9. ArrayList的元素类型不匹配。
+  10. Collections.sort调用时未提供比较器，且Spaceship类未实现Comparable接口。
+  11. 代码风格和命名约定不一致，可读性差。
+
+【详细批注】
+
+  --- 批注 1 ---
+  原文: import java.util.*...
+  批注: 导入语句正确。
+  建议: 无需修改。
+
+  --- 批注 2 ---
+  原文: class EngineConfig implements Cloneable {
+    String engineID;
+
+    public EngineConfig(String engin...
+  批注: 构造函数中应该使用this关键字来初始化成员变量。clone方法和toString方法未实现。
+  建议: 将构造函数中的engineID = engineID;改为this.engineID = engineID;。实现clone方法和toString方法。
+
+  --- 批注 3 ---
+  原文: class Spaceship implements Cloneable {
+    private double fuel;
+    private EngineConfig engine;
+   ...
+  批注: totalInstances变量的值从未增加，getTotalInstances方法返回的值始终为0。clone方法中未对fuel进行深拷贝。
+  建议: 在构造函数中增加totalInstances的值。在clone方法中对fuel进行深拷贝。
+
+  --- 批注 4 ---
+  原文: class CargoShuttle {
+    private double cargoCapacity;
+
+    public CargoShuttle(double fuel, String ...
+  批注: CargoShuttle类继承自Spaceship类，但构造函数中调用Spaceship构造函数的方式不正确。clone方法未实现深拷贝。toString方法的实现不正确。
+  建议: 修改构造函数，使用super关键字调用父类构造函数。clone方法中对所有成员变量进行深拷贝。修改toString方法，返回有意义的字符串表示。
+
+  --- 批注 5 ---
+  原文: class ExplorerProbe extends Spaceship {
+    private ArrayList<String> scientificInstruments;
+
+    pu...
+  批注: addInstrument方法中调用了未定义的add方法。clone方法未实现深拷贝。toString方法的实现不正确。
+  建议: 在addInstrument方法中调用scientificInstruments的add方法。clone方法中对所有成员变量进行深拷贝。修改toString方法，返回有意义的字符串表示。
+
+  --- 批注 6 ---
+  原文: public class SpaceControlCenter {
+    public static void main(String[] args) throws Exception {
+    ...
+  批注: fleet.add(CargoShuttle(5000, "CT-001", 10000));应为fleet.add(new CargoShuttle(5000, "CT-001", 10000));。fleet.get(2).getEngine().setEngineID("CT-COPY");应为fleet.get(2).setEngine(new EngineConfig("CT-COPY"));。Collections.sort(fleet);调用时未提供比较器，且Spaceship类未实现Comparable接口。
+  建议: 修改CargoShuttle和ExplorerProbe对象的创建方式。修改EngineID的设置方式。为Spaceship类实现Comparable接口，并提供比较器。
+
+============================================================
+本报告由 AI 智能批改系统生成

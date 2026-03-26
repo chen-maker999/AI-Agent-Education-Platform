@@ -77,7 +77,7 @@
                 class="homework-card"
                 :class="{ active: selectedHomework?.id === item.id }"
                 :style="{ animationDelay: index * 50 + 'ms' }"
-                @click="selectedHomework = item"
+                @click="selectHomework(item)"
               >
                 <div class="homework-card-icon" :class="item.status">
                   <svg v-if="item.status === 'reviewed'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -167,6 +167,38 @@
                 </div>
               </div>
 
+              <!-- Kimi 批改进度 / 结果 -->
+              <div v-if="grading || gradingResult" class="group-box grading-result">
+                <h5>Kimi 智能批改</h5>
+
+                <!-- 进度条 -->
+                <div v-if="grading" class="grading-progress">
+                  <div class="progress-bar">
+                    <div class="progress-fill" :style="{ width: gradingProgress + '%' }"></div>
+                  </div>
+                  <div class="progress-text">{{ gradingPhase }}</div>
+                </div>
+
+                <!-- 批改结果 -->
+                <div v-if="gradingResult && !grading" class="grading-done">
+                  <div class="score-row">
+                    <span class="score-label">得分</span>
+                    <span class="score-value" :class="{
+                      excellent: gradingResult.score >= 90,
+                      good: gradingResult.score >= 70 && gradingResult.score < 90,
+                      medium: gradingResult.score >= 60 && gradingResult.score < 70,
+                      poor: gradingResult.score < 60
+                    }">
+                      {{ gradingResult.score }}/{{ gradingResult.total_score }}
+                    </span>
+                  </div>
+                  <div class="issue-count">
+                    共发现 <strong>{{ gradingResult.issue_count }}</strong> 个问题
+                  </div>
+                  <div class="grading-summary">{{ gradingResult.summary }}</div>
+                </div>
+              </div>
+
               <!-- Comments Rail -->
               <div class="group-box">
                 <h5>{{ isTeacher ? '批注轨' : 'AI 批注' }}</h5>
@@ -184,9 +216,21 @@
           </div>
 
           <div class="inspector-actions">
-            <button type="button" class="btn" @click="downloadHomework(selectedHomework)">下载</button>
+            <button type="button" class="btn" @click="downloadHomework(selectedHomework)">
+              {{ selectedHomework?.hasReview ? '下载批改文件' : '下载' }}
+            </button>
+            <!-- 智能批改按钮：仅学生可见，仅 doc/docx 文件 -->
+            <button
+              v-if="!isTeacher && selectedHomework?.filename"
+              type="button"
+              class="btn btn-primary"
+              :disabled="grading"
+              @click="startKimiGrade(selectedHomework)"
+            >
+              {{ grading ? '批改中…' : 'Kimi 智能批改' }}
+            </button>
             <button v-if="isTeacher && selectedHomework?.status === 'pending'" type="button" class="btn btn-primary" @click="markReviewed(selectedHomework)">标记已批改</button>
-            <button v-if="isTeacher" type="button" class="btn btn-danger" @click="removeHomework(selectedHomework)">删除</button>
+            <button v-if="isTeacher || (!isTeacher && selectedHomework?.uploader === authStore.user?.id)" type="button" class="btn btn-danger" @click="removeHomework(selectedHomework)">删除</button>
           </div>
         </aside>
       </div>
@@ -234,53 +278,84 @@
     </div>
 
     <!-- Upload Dialog -->
-    <div v-if="showUpload" class="dialog-mask" @click.self="showUpload = false">
-      <div class="dialog-card">
-        <div class="dialog-header">
-          <div class="dialog-title">{{ isTeacher ? '上传示例作业' : '提交作业' }}</div>
-          <button type="button" class="dialog-close" @click="showUpload = false">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-        <div class="dialog-body">
-          <div class="field-block">
-            <label>选择文件</label>
-            <div class="file-input-wrapper" @click="triggerFileInput">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                <polyline points="17,8 12,3 7,8"/>
-                <line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
-              <span>{{ selectedFile?.name || '点击选择文件' }}</span>
+    <Teleport to="body">
+      <div v-if="showUpload" class="dialog-root">
+        <div class="dialog-backdrop" aria-hidden="true" @click="showUpload = false"></div>
+        <div class="macos-window" role="dialog" aria-modal="true" @click.stop>
+          <!-- Title bar — macOS traffic lights -->
+          <div class="macos-titlebar">
+            <div class="macos-dots">
+              <span class="dot dot--close" @click="showUpload = false"></span>
+              <span class="dot dot--minimize"></span>
+              <span class="dot dot--maximize"></span>
             </div>
-            <input ref="fileInputRef" type="file" @change="onFileChange" />
+            <span class="macos-title">{{ isTeacher ? '上传示例作业' : '提交作业' }}</span>
+            <div class="macos-titlebar-spacer"></div>
           </div>
-          <div class="field-block">
-            <label>课程</label>
-            <input v-model="uploadForm.course" type="text" placeholder="例如：算法设计" />
+
+          <!-- Content -->
+          <div class="macos-content auth-form-panel">
+            <div class="auth-panel__header">
+              <div class="auth-panel__eyebrow">Upload</div>
+              <h2 class="auth-panel__title">{{ isTeacher ? '上传示例作业' : '提交作业' }}</h2>
+              <p class="auth-panel__sub">{{ isTeacher ? '上传一份示例作业供学生参考' : '上传你的作业文档，AI 将自动批改' }}</p>
+            </div>
+
+            <div class="auth-form">
+              <!-- File picker -->
+              <div class="form-group">
+                <label class="input-label">选择文件</label>
+                <div class="input-wrap file-input-wrapper" @click="fileInputRef?.click()">
+                  <svg class="input-icon" viewBox="0 0 20 20" fill="none">
+                    <path d="M14 3H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                    <polyline points="14,3 14,8 19,8" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+                  </svg>
+                  <span class="file-name">{{ selectedFile?.name || '点击选择文件（支持 doc/docx/pdf）' }}</span>
+                  <input ref="fileInputRef" type="file" class="visually-hidden" @change="onFileChange" />
+                </div>
+              </div>
+
+              <!-- Course -->
+              <div class="form-group">
+                <label class="input-label">课程名称</label>
+                <div class="input-wrap">
+                  <svg class="input-icon" viewBox="0 0 20 20" fill="none">
+                    <path d="M2 6h16M2 10h10M2 14h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                  </svg>
+                  <input class="input-field input-field--icon" v-model="uploadForm.course" type="text" placeholder="例如：算法设计" />
+                </div>
+              </div>
+
+              <!-- Note -->
+              <div class="form-group">
+                <label class="input-label">备注（可选）</label>
+                <div class="input-wrap">
+                  <textarea class="input-field" v-model="uploadForm.note" placeholder="补充作业说明或要求…" rows="3"></textarea>
+                </div>
+              </div>
+
+              <!-- Actions -->
+              <div class="auth-switch">
+                <button type="button" class="btn" @click="showUpload = false">取消</button>
+                <button type="button" class="btn btn-primary auth-submit" :disabled="uploading || !selectedFile" @click="uploadHomework">
+                  <svg v-if="uploading" class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" stroke-dasharray="32" stroke-dashoffset="10"/>
+                  </svg>
+                  {{ uploading ? '上传中…' : '确认上传' }}
+                </button>
+              </div>
+            </div>
           </div>
-          <div class="field-block">
-            <label>备注</label>
-            <textarea v-model="uploadForm.note" placeholder="补充作业说明"></textarea>
-          </div>
-        </div>
-        <div class="dialog-footer">
-          <button type="button" class="btn" @click="showUpload = false">取消</button>
-          <button type="button" class="btn btn-primary" :disabled="uploading" @click="uploadHomework">
-            {{ uploading ? '上传中...' : '确认上传' }}
-          </button>
         </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { homeworkApi } from '@/api'
+import { homeworkApi, reviewApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { summarizeHomework } from '@/utils/viewModels'
 
@@ -306,6 +381,12 @@ const showUpload = ref(false)
 const uploading = ref(false)
 const selectedFile = ref(null)
 const fileInputRef = ref(null)
+
+// Kimi AI 批改状态
+const grading = ref(false)
+const gradingProgress = ref(0)
+const gradingPhase = ref('')
+const gradingResult = ref(null) // { review_id, score, issues, graded_file_url, ... }
 
 const uploadForm = ref({
   course: '',
@@ -342,6 +423,14 @@ const filteredHomework = computed(() => {
 const selectedComments = computed(() => {
   if (!selectedHomework.value) return []
 
+  // 优先展示 Kimi 批改结果
+  if (gradingResult.value?.issues?.length) {
+    return gradingResult.value.issues.map((issue, idx) => ({
+      title: `[${issue.severity === 'error' ? '错误' : issue.severity === 'warning' ? '警告' : '提示'}] ${issue.location || '全局'}`,
+      description: `${issue.description}\n→ ${issue.suggestion}`
+    }))
+  }
+
   if (isTeacher.value) {
     return [
       { title: '定位错误段落', description: '预留字符级、行级或段落级批注位置。' },
@@ -356,12 +445,27 @@ const selectedComments = computed(() => {
 })
 
 // Actions
-function triggerFileInput() {
-  fileInputRef.value?.click()
-}
+// noop — file input 点击事件由其父级 wrapper 自动触发
 
 function onFileChange(event) {
   selectedFile.value = event.target.files?.[0] || null
+}
+
+async function selectHomework(item) {
+  selectedHomework.value = item
+  gradingResult.value = null
+  // 如果作业已被批改，加载批改记录获取 graded_file_url
+  if (item?.status === 'reviewed' && item?.id) {
+    try {
+      const res = await reviewApi.list({ homework_id: item.id })
+      const review = res?.data?.items?.[0]
+      if (review) {
+        gradingResult.value = review
+      }
+    } catch {
+      // 静默失败，不影响选择
+    }
+  }
 }
 
 async function uploadHomework() {
@@ -392,13 +496,108 @@ async function uploadHomework() {
 }
 
 async function downloadHomework(item) {
+  const reviewId = gradingResult.value?.review_id
+  const gradedUrl = gradingResult.value?.graded_file_url
+
+  if (!reviewId && !gradedUrl) {
+    ElMessage.warning('该作业尚未进行智能批改。')
+    return
+  }
+
   try {
-    const res = await homeworkApi.download(item.id)
-    if (res?.data?.download_url) {
-      window.open(res.data.download_url, '_blank')
+    let url = gradedUrl
+    let filename = item?.graded_filename || '批改结果.docx'
+
+    if (reviewId) {
+      const meta = await reviewApi.download(reviewId)
+      url = meta?.data?.download_url || url
+      filename = meta?.data?.graded_filename || filename
     }
-  } catch {
+
+    if (!url) {
+      ElMessage.error('没有可用的批改文件链接。')
+      return
+    }
+
+    const r = await fetch(url, { mode: 'cors' })
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    const buf = await r.arrayBuffer()
+
+    const u8 = new Uint8Array(buf)
+    const isZip = u8.length >= 4 && u8[0] === 0x50 && u8[1] === 0x4b
+    if (!isZip) {
+      const probe = new TextDecoder('utf-8', { fatal: false }).decode(u8.slice(0, 256))
+      if (probe.trimStart().startsWith('<') || probe.includes('Error')) {
+        ElMessage.error('下载到的不是 Word 文档，可能是 MinIO 错误页。')
+        return
+      }
+    }
+
+    const blob = new Blob([buf], {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = filename.endsWith('.docx') ? filename : `${filename}.docx`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  } catch (e) {
+    console.error(e)
     ElMessage.error('下载失败。')
+  }
+}
+
+async function startKimiGrade(item) {
+  if (!item?.id) return
+
+  // 重置状态
+  grading.value = true
+  gradingProgress.value = 0
+  gradingPhase.value = '正在连接 Kimi AI...'
+  gradingResult.value = null
+
+  try {
+    // 模拟进度（实际由后端控制）
+    const phases = [
+      { progress: 10, text: '正在读取作业文件...' },
+      { progress: 30, text: 'Kimi AI 正在分析代码结构...' },
+      { progress: 60, text: 'Kimi AI 正在生成批注...' },
+      { progress: 80, text: '正在注入 Word 批注...' },
+      { progress: 95, text: '正在保存批改结果...' },
+    ]
+    let phaseIdx = 0
+    const tick = setInterval(() => {
+      if (phaseIdx < phases.length) {
+        gradingProgress.value = phases[phaseIdx].progress
+        gradingPhase.value = phases[phaseIdx].text
+        phaseIdx++
+      }
+    }, 2000)
+
+    const res = await reviewApi.grade(item.id)
+
+    clearInterval(tick)
+    gradingProgress.value = 100
+    gradingPhase.value = '批改完成！'
+
+    if (res?.code === 200 && res?.data) {
+      gradingResult.value = res.data
+      gradingPhase.value = `完成！得分 ${res.data.score}/${res.data.total_score}，发现 ${res.data.issue_count} 个问题`
+      ElMessage.success('Kimi 智能批改完成！')
+      await loadHomework()
+      const hid = item.id
+      const refreshed = homeworkItems.value.find((h) => h.id === hid)
+      if (refreshed && selectedHomework.value?.id === hid) {
+        selectedHomework.value = refreshed
+      }
+    } else {
+      ElMessage.error(res?.message || '批改失败，请重试。')
+    }
+  } catch (err) {
+    console.error('Kimi grading error:', err)
+    ElMessage.error(err?.response?.data?.message || 'Kimi 批改失败，请检查网络和 API 配置。')
+  } finally {
+    grading.value = false
   }
 }
 
@@ -413,6 +612,14 @@ async function markReviewed(item) {
 }
 
 async function removeHomework(item) {
+  // 非教师只能删除自己上传的作业
+  if (!isTeacher.value && item.uploader !== authStore.user?.id) {
+    ElMessage.warning('你只能删除自己上传的作业。')
+    return
+  }
+  if (!confirm(`确定要删除作业「${item.filename}」吗？此操作不可撤销。`)) {
+    return
+  }
   try {
     await homeworkApi.delete(item.id)
     ElMessage.success('作业已删除。')
@@ -428,7 +635,8 @@ async function removeHomework(item) {
 async function loadHomework() {
   try {
     const res = await homeworkApi.list({ page: 1, page_size: 50 })
-    homeworkItems.value = summarizeHomework(res?.data)
+    // 后端返回 {items, total, page, page_size}，response拦截器已去掉外层code/message
+    homeworkItems.value = summarizeHomework(res?.data?.items ?? [])
   } catch {
     homeworkItems.value = []
   }
@@ -1122,133 +1330,260 @@ onMounted(loadHomework)
   color: #FF9500;
 }
 
-/* Dialog */
-.dialog-mask {
+/* ════════════════════════════════════════════
+   Upload Dialog — 完整复用 Login.vue 的 macOS 卡片风格
+   ════════════════════════════════════════════ */
+
+/* 根：Teleport to body，脱离侧栏玻璃层叠上下文 */
+.dialog-root {
   position: fixed;
   inset: 0;
-  z-index: 50;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(0, 0, 0, 0.68);
-  backdrop-filter: blur(10px);
-}
-
-.dialog-card {
-  width: min(480px, 100%);
-  background: var(--bg-panel-solid);
-  border-radius: 14px;
-  box-shadow: 0 24px 48px rgba(0,0,0,0.2);
-  overflow: hidden;
-}
-
-.dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
-}
-
-.dialog-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.dialog-close {
-  width: 28px;
-  height: 28px;
+  z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  color: var(--text-secondary);
-  cursor: pointer;
+  padding: 24px;
+  box-sizing: border-box;
 }
 
-.dialog-close:hover {
-  background: rgba(0,0,0,0.05);
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(4px);
+  z-index: 0;
 }
 
-.dialog-close svg { width: 16px; height: 16px; }
-
-.dialog-body {
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+/* ── macOS Window 玻璃卡（与 Login.vue .macos-window 完全一致） ── */
+.macos-window {
+  position: relative;
+  z-index: 1;
+  width: min(480px, 100%);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-radius: 12px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.14),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset,
+    0 1px 0 rgba(255, 255, 255, 0.9) inset;
+  overflow: hidden;
+  isolation: isolate;
 }
 
-.field-block {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.field-block label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.field-block input,
-.field-block textarea {
-  padding: 8px 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  font-family: inherit;
-  font-size: 13px;
-  color: var(--text);
-  background: rgba(255,255,255,0.8);
-  transition: border-color 0.15s;
-}
-
-.field-block input:focus,
-.field-block textarea:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.field-block textarea {
-  min-height: 80px;
-  resize: vertical;
-}
-
-.file-input-wrapper {
+.macos-titlebar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px;
-  border: 2px dashed var(--border);
-  border-radius: 8px;
+  padding: 11px 14px;
+  background: rgba(248, 248, 248, 0.85);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+.macos-dots {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dot--close { background: #ff5f57; cursor: pointer; }
+.dot--minimize { background: #febc2e; }
+.dot--maximize { background: #28c840; }
+
+.macos-title {
+  flex: 1;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: #666;
+}
+
+.macos-titlebar-spacer { width: 52px; }
+
+.macos-content {
+  padding: 28px 32px;
+}
+
+.auth-form-panel {
+  width: 100%;
+}
+
+.auth-panel__header { margin-bottom: 24px; }
+
+.auth-panel__eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--brand-500);
+  margin-bottom: 6px;
+}
+
+.auth-panel__title {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.auth-panel__sub {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* ── 表单 ── */
+.auth-form { display: flex; flex-direction: column; gap: 16px; }
+
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+
+.input-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.input-wrap { position: relative; display: flex; align-items: center; }
+
+.input-icon {
+  position: absolute;
+  left: 14px;
+  width: 18px;
+  height: 18px;
+  color: var(--text-muted);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.input-field {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  border-radius: var(--r-md, 8px);
+  background: #f8fafc;
+  font-size: 14px;
+  color: var(--text-primary);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+  outline: none;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.input-field::placeholder { color: var(--text-muted); }
+.input-field:focus {
+  border-color: var(--brand-400);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10);
+  background: #fff;
+}
+.input-field--icon { padding-left: 44px; }
+
+textarea.input-field { resize: vertical; min-height: 80px; }
+
+/* 文件选择：与其他 input-field 视觉完全一致 */
+.file-input-wrapper {
+  /* 继承 .input-wrap 的 position/flex，仅覆盖边距与边框 */
+  width: 100%;
+  padding: 12px 16px 12px 44px;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  border-radius: var(--r-md, 8px);
+  background: #f8fafc;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+  box-sizing: border-box;
 }
 
 .file-input-wrapper:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  border-color: var(--brand-400);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10);
+  background: #fff;
 }
 
-.file-input-wrapper svg { width: 20px; height: 20px; color: var(--text-tertiary); }
-.file-input-wrapper span { font-size: 13px; color: var(--text-secondary); }
+/* 隐藏原生 file input，但保留可点击 */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
-.dialog-footer {
+/* 文件选择区的图标 */
+.file-input-wrapper .input-icon {
+  position: absolute;
+  left: 14px;
+  width: 18px;
+  height: 18px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* 文件名文字 */
+.file-name { font-size: 14px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-name:empty::before { content: '点击选择文件（支持 doc/docx/pdf）'; color: var(--text-muted); }
+
+/* 操作行 */
+.auth-switch {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 16px 20px;
-  border-top: 1px solid var(--border);
-  background: rgba(0,0,0,0.02);
+  gap: 10px;
+  margin-top: 4px;
 }
 
-.dialog-footer .btn {
-  flex: 0;
-  padding: 8px 16px;
+.auth-submit { min-width: 120px; justify-content: center; }
+.auth-submit:disabled { opacity: 0.45; cursor: not-allowed; }
+.spin { animation: spin-slow 0.8s linear infinite; }
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+
+/* ── 深色模式 ── */
+:global([data-theme="dark"]) .macos-window {
+  background: rgba(40, 40, 40, 0.88);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.10) inset;
 }
+:global([data-theme="dark"]) .macos-titlebar {
+  background: rgba(30, 30, 30, 0.85);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+:global([data-theme="dark"]) .macos-title { color: #999; }
+:global([data-theme="dark"]) .auth-panel__eyebrow { color: var(--brand-400); }
+:global([data-theme="dark"]) .auth-panel__title { color: #f1f5f9; }
+:global([data-theme="dark"]) .auth-panel__sub { color: #94a3b8; }
+:global([data-theme="dark"]) .input-label { color: #94a3b8; }
+:global([data-theme="dark"]) .input-field {
+  background: #1f2937;
+  border-color: rgba(255, 255, 255, 0.10);
+  color: #f1f5f9;
+}
+:global([data-theme="dark"]) .input-field::placeholder { color: #6b7280; }
+:global([data-theme="dark"]) .input-field:focus {
+  border-color: var(--brand-400);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.20);
+  background: #1f2937;
+}
+:global([data-theme="dark"]) .input-icon { color: #6b7280; }
+:global([data-theme="dark"]) .file-input-wrapper {
+  border-color: rgba(255, 255, 255, 0.10);
+  background: #1f2937;
+}
+:global([data-theme="dark"]) .file-input-wrapper:hover {
+  border-color: var(--brand-400);
+  background: rgba(37, 99, 235, 0.08);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+:global([data-theme="dark"]) .file-input-wrapper .input-icon { color: #6b7280; }
+:global([data-theme="dark"]) .file-name { color: #94a3b8; }
+:global([data-theme="dark"]) .file-name:empty::before { color: #6b7280; }
 
 /* Responsive */
 @media (max-width: 900px) {
@@ -1273,4 +1608,62 @@ onMounted(loadHomework)
   .dock-item { padding: 6px 10px; }
   .dock-stats { display: none; }
 }
+
+/* Kimi 智能批改 */
+.grading-result {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  padding: 14px;
+}
+:global([data-theme="dark"]) .grading-result {
+  background: #0c2444;
+  border-color: #1e40af;
+}
+.grading-progress { margin-bottom: 8px; }
+.progress-bar {
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+:global([data-theme="dark"]) .progress-bar { background: #374151; }
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+.progress-text {
+  font-size: 12px;
+  color: #6b7280;
+  text-align: center;
+}
+:global([data-theme="dark"]) .progress-text { color: #9ca3af; }
+.grading-done { display: flex; flex-direction: column; gap: 8px; }
+.score-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+.score-label { font-weight: 600; color: var(--text-secondary); }
+.score-value { font-size: 22px; font-weight: 700; }
+.score-value.excellent { color: #059669; }
+.score-value.good { color: #2563eb; }
+.score-value.medium { color: #d97706; }
+.score-value.poor { color: #dc2626; }
+.issue-count { font-size: 13px; color: #6b7280; }
+:global([data-theme="dark"]) .issue-count { color: #9ca3af; }
+.grading-summary { font-size: 13px; color: #374151; line-height: 1.5; }
+:global([data-theme="dark"]) .grading-summary { color: #d1d5db; }
+.btn-success {
+  background: #059669 !important;
+  color: #fff !important;
+  border-color: #059669 !important;
+}
+.btn-success:hover { background: #047857 !important; }
+.btn-sm { padding: 4px 12px; font-size: 12px; }
+.mt-2 { margin-top: 8px; }
 </style>
