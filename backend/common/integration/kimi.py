@@ -46,6 +46,25 @@ class KimiClient:
         if tools:
             payload["tools"] = tools
 
+        # 调试日志
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Kimi API 请求: model={self.model}, messages_count={len(messages)}")
+        
+        # 打印第一条消息内容用于调试
+        if messages:
+            first_msg = messages[0]
+            content_preview = first_msg.get('content', '')[:100] if isinstance(first_msg.get('content'), str) else str(first_msg.get('content'))[:100]
+            logger.info(f"Kimi API system prompt: {content_preview}...")
+            
+            # 检查是否有空消息
+            for i, msg in enumerate(messages):
+                if not msg.get('content') and msg.get('role') != 'system':
+                    logger.warning(f"Kimi API 消息 {i} role={msg.get('role')} 没有 content")
+        
+        if tools:
+            logger.info(f"Kimi API 请求包含 tools: {len(tools)} 个工具")
+
         last_error = None
         retry_delay = self.retry_delay
 
@@ -66,7 +85,10 @@ class KimiClient:
                         else:
                             return {"error": f"API error: {response.status_code} - Rate limit exceeded after {self.max_retries} retries", "detail": response.text}
                     else:
-                        return {"error": f"API error: {response.status_code}", "detail": response.text}
+                        error_detail = response.text
+                        import logging
+                        logging.warning(f"Kimi API返回: status={response.status_code}, detail={error_detail}")
+                        return {"error": f"API error: {response.status_code}", "detail": error_detail}
 
             except httpx.RequestError as e:
                 last_error = f"Connection error: {str(e)}"
@@ -91,6 +113,58 @@ class KimiClient:
         import logging
         logging.warning(f"Kimi API调用失败: {last_error}, 尝试次数: {self.max_retries}")
         return {"error": last_error or "Unknown error"}
+
+    async def chat_stream(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        **kwargs
+    ):
+        """Send streaming chat completion request to Kimi API."""
+        if not self.api_key:
+            yield "data: {\"error\": \"API key not configured\"}\n\n"
+            return
+
+        url = f"{self.endpoint}/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True
+        }
+
+        # 如果有工具定义，添加 tools 参数
+        if tools:
+            payload["tools"] = tools
+
+        # 调试日志
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Kimi Stream API 请求: model={self.model}, messages_count={len(messages)}, has_tools={bool(tools)}")
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                async with client.stream("POST", url, json=payload, headers=headers) as response:
+                    if response.status_code == 200:
+                        async for line in response.aiter_lines():
+                            if line.startswith("data: "):
+                                yield line + "\n"
+                            elif line == "data: [DONE]":
+                                yield "data: [DONE]\n\n"
+                                break
+                    elif response.status_code == 429:
+                        yield f"data: {{\"error\": \"API rate limit exceeded\"}}\n\n"
+                    else:
+                        yield f"data: {{\"error\": \"API error: {response.status_code}\"}}\n\n"
+        except Exception as e:
+            yield f"data: {{\"error\": \"{str(e)}\"}}\n\n"
 
     async def chat_completion(
         self,

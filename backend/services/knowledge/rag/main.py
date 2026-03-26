@@ -495,8 +495,11 @@ async def rag_chat(request: RAGRequest):
             retrieval_stats=result.get("retrieval_stats")
         )
     except Exception as e:
-        print(f"RAG 聊天错误：{e}")
         import traceback
+        import logging
+        error_detail = traceback.format_exc()
+        logging.error(f"RAG聊天错误: {e}\n{error_detail}")
+        print(f"RAG聊天错误: {e}", flush=True)
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"RAG 处理失败：{str(e)}")
 
