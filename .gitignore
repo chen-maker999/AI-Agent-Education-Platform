@@ -7,6 +7,7 @@
 **/.venv/
 **/venv/
 **/__pycache__/
+*.pyc
 
 # IDE
 **/.idea/
@@ -34,3 +35,33 @@ backend/data/
 backend/config/
 backend/evaluation_tools/
 backend/tests/
+
+# Node.js
+node_modules/
+.npm/
+
+# Next.js
+.next/
+out/
+
+# Vite
+dist/
+*.local
+
+# 大型媒体文件
+*.dmg
+*.splinecode
+*.fbx
+*.obj
+*.jpg
+*.png
+*.gif
+*.svg
+*.wasm
+
+# 日志
+*.log
+preview.log
+
+# 测试文件
+test-frontend/
