@@ -241,6 +241,21 @@ export const configApi = {
   list: () => api.get('/config')
 }
 
+export const homeworkGenApi = {
+  // 生成作业
+  generate: (data) => api.post('/homework-gen/generate', data),
+  // 下载作业 PDF
+  download: (homeworkId) => api.get(`/homework-gen/download/${homeworkId}`),
+  // 获取作业列表
+  list: (params) => api.get('/homework-gen/list', { params }),
+  // 获取作业详情
+  detail: (homeworkId) => api.get(`/homework-gen/detail/${homeworkId}`),
+  // 获取可选课程列表
+  courses: () => api.get('/homework-gen/courses'),
+  // 删除作业
+  delete: (homeworkId) => api.delete(`/homework-gen/${homeworkId}`)
+}
+
 export const reviewApi = {
   // Kimi AI 智能批改（GET，返回批改结果）
   grade: (homeworkId) => api.get(`/homework_review/ai-grade/${homeworkId}`),

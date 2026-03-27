@@ -56,13 +56,18 @@ export function summarizeHomework(items = []) {
     const uiStatus = raw === 'reviewed' ? 'reviewed' : 'pending'
     return {
       id: item.homework_id || item.id || `hw_${index}`,
-      filename: item.filename || item.name || `作业_${index + 1}.pdf`,
-      uploader: item.student_id || item.uploader || item.user_name || item.student_name || '未知用户',
+      filename: item.filename || item.title || item.name || `作业_${index + 1}.pdf`,
+      uploader: item.student_id || item.uploader || item.user_name || item.student_name || item.created_by || '未知用户',
       course: item.course || item.course_name || '未分类课程',
       uploadTime: item.upload_time || item.created_at || '刚刚',
       status: uiStatus,
       score: item.score ?? null,
-      aiCommentCount: item.ai_comment_count ?? 0
+      aiCommentCount: item.ai_comment_count ?? 0,
+      // AI 生成作业的字段
+      isGenerated: item.isGenerated || false,
+      hasReview: item.hasReview || item.ai_comment_count > 0 || false,
+      generatedFileUrl: item.generatedFileUrl || item.file_url || null,
+      generatedHomeworkId: item.generatedHomeworkId || item.homework_id || null
     }
   })
 }

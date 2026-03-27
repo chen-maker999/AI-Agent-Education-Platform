@@ -51,6 +51,7 @@ from services.intelligence.evaluate.main import router as evaluate_router
 from services.intelligence.parse.main import router as parse_router
 from services.intelligence.exercise.main import router as exercise_router
 from services.intelligence.worksheet.main import router as worksheet_router
+from services.intelligence.homework_gen.main import router as homework_gen_router
 from services.intelligence.warning.main import router as warning_router
 from services.adapt.gateway.main import router as gateway_router
 from services.adapt.sync.main import router as sync_router
@@ -388,6 +389,7 @@ app.include_router(evaluate_router, prefix=settings.API_PREFIX)
 app.include_router(parse_router, prefix=settings.API_PREFIX)
 app.include_router(exercise_router, prefix=settings.API_PREFIX)
 app.include_router(worksheet_router, prefix=settings.API_PREFIX)
+app.include_router(homework_gen_router, prefix=settings.API_PREFIX)
 app.include_router(warning_router, prefix=settings.API_PREFIX)
 app.include_router(gateway_router, prefix=settings.API_PREFIX)
 app.include_router(sync_router, prefix=settings.API_PREFIX)
