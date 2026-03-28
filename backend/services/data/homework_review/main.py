@@ -7,6 +7,7 @@ import hashlib
 import io
 import zipfile
 import json
+import base64
 from datetime import datetime, timedelta
 from typing import Optional, List
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query
@@ -69,6 +70,239 @@ def ensure_bucket():
             client.make_bucket(BUCKET_REVIEW)
     except Exception:
         pass
+
+
+def detect_homework_image_mime(mime_type: Optional[str], filename: str) -> Optional[str]:
+    """Return canonical image/* mime for homework sheets, or None."""
+    m = (mime_type or "").lower().split(";")[0].strip()
+    if m in ("image/jpg",):
+        m = "image/jpeg"
+    if m in ("image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp"):
+        return m
+    ext = (os.path.splitext(filename or "")[1] or "").lower()
+    return {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+        ".bmp": "image/bmp",
+    }.get(ext)
+
+
+def _clamp01(v: float, lo: float = 0.02, hi: float = 0.98) -> float:
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return (lo + hi) / 2
+    return max(lo, min(hi, x))
+
+
+def normalize_homework_image_bytes(image_bytes: bytes) -> tuple[bytes, str]:
+    """
+    应用 EXIF 方向校正，使像素宽高与「肉眼所见」一致。
+    避免模型按正确朝向理解图像，而 Pillow 却在未旋转的画布上画勾叉导致整体错位。
+    """
+    from PIL import Image, ImageOps
+
+    im = Image.open(io.BytesIO(image_bytes))
+    im = ImageOps.exif_transpose(im)
+    out = io.BytesIO()
+    fmt = (im.format or "PNG").upper()
+    if fmt in ("JPEG", "JPG"):
+        im = im.convert("RGB")
+        im.save(out, format="JPEG", quality=92, optimize=True)
+        return out.getvalue(), "image/jpeg"
+    if fmt == "WEBP":
+        im.save(out, format="WEBP", quality=90)
+        return out.getvalue(), "image/webp"
+    im.save(out, format="PNG", optimize=True)
+    return out.getvalue(), "image/png"
+
+
+def _mark_center_from_dict(mk: dict, index: int, total: int) -> tuple[float, float]:
+    """
+    从单条 mark 解析绘制中心 (nx, ny)，优先使用手写答案 bbox，其次 nx/ny，最后按题序兜底。
+    """
+    bb = mk.get("bbox") or mk.get("answer_bbox") or mk.get("box")
+    if isinstance(bb, (list, tuple)) and len(bb) >= 4:
+        try:
+            x0, y0, x1, y1 = (float(bb[0]), float(bb[1]), float(bb[2]), float(bb[3]))
+        except (TypeError, ValueError):
+            x0 = y0 = x1 = y1 = 0.5
+        x0, y0, x1, y1 = _clamp01(x0), _clamp01(y0), _clamp01(x1), _clamp01(y1)
+        if x1 < x0:
+            x0, x1 = x1, x0
+        if y1 < y0:
+            y0, y1 = y1, y0
+        correct = bool(mk.get("correct", True))
+        if correct:
+            # 勾：放在该题手写区域右侧略偏外，垂直取区域中线
+            pad = 0.012
+            cx = min(0.97, x1 + pad)
+            cy = (y0 + y1) / 2
+        else:
+            # 叉：落在手写答案区域中心，避免飘到邻题
+            cx = (x0 + x1) / 2
+            cy = (y0 + y1) / 2
+        return cx, cy
+
+    nx = mk.get("nx")
+    ny = mk.get("ny")
+    if nx is not None and ny is not None:
+        return _clamp01(nx), _clamp01(ny)
+
+    n = max(total, 1)
+    ny = 0.12 + (index + 0.5) * (0.76 / n)
+    nx = 0.88 if bool(mk.get("correct", True)) else 0.5
+    return nx, ny
+
+
+def draw_grade_marks_on_image(image_bytes: bytes, marks: List[dict]) -> bytes:
+    """Overlay red check / cross on homework image using Pillow (RGBA composite)."""
+    from PIL import Image, ImageDraw
+
+    im = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+    overlay = Image.new("RGBA", im.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    w, h = im.size
+    stroke = max(3, int(min(w, h) * 0.005))
+    arm = max(14, int(min(w, h) * 0.032))
+    red = (230, 30, 40, 255)
+
+    n = max(len(marks), 1)
+    for i, mk in enumerate(marks):
+        correct = bool(mk.get("correct", True))
+        nx, ny = _mark_center_from_dict(mk, i, n)
+        cx = nx * w
+        cy = ny * h
+
+        if correct:
+            p1 = (cx - arm * 0.85, cy)
+            p2 = (cx - arm * 0.15, cy + arm * 0.55)
+            p3 = (cx + arm * 0.9, cy - arm * 0.65)
+            draw.line([p1, p2], fill=red, width=stroke)
+            draw.line([p2, p3], fill=red, width=stroke)
+        else:
+            d = arm * 0.55
+            draw.line([(cx - d, cy - d), (cx + d, cy + d)], fill=red, width=stroke)
+            draw.line([(cx - d, cy + d), (cx + d, cy - d)], fill=red, width=stroke)
+
+    out = Image.alpha_composite(im, overlay).convert("RGB")
+    buf = io.BytesIO()
+    out.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
+def _parse_kimi_json_content(raw_content: str) -> Optional[dict]:
+    json_str = (raw_content or "").strip()
+    if json_str.startswith("```"):
+        lines = json_str.split("\n")
+        json_str = "\n".join(lines[1:-1] if lines and lines[-1].strip() == "```" else lines[1:])
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError:
+        return None
+
+
+async def kimi_grade_homework_image(image_bytes: bytes, image_mime: str) -> dict:
+    """
+    Vision model: judge each question, return marks with normalized positions for overlay.
+    """
+    from common.integration.kimi import kimi_client
+
+    b64 = base64.b64encode(image_bytes).decode("ascii")
+    mime = image_mime if image_mime.startswith("image/") else "image/jpeg"
+    data_uri = f"data:{mime};base64,{b64}"
+
+    model = settings.KIMI_MODEL
+    if not kimi_client.is_vision_model(model):
+        model = "kimi-k2.5"
+
+    system_prompt = (
+        "你是专业阅卷教师。请仔细观察试卷/作业照片：识别印刷题干与学生手写答案，逐题判断对错。\n"
+        "只输出一个 JSON 对象，不要 markdown 代码块，不要其它说明文字。结构如下：\n"
+        '{"score":<0-100>,"total_score":100,"summary":"<一句总评>",'
+        '"marks":[{"question_number":<整数题号>,"correct":<true|false>,'
+        '"student_answer":"<识别出的作答要点>",'
+        '"bbox":[x0,y0,x1,y1],'
+        '"nx":<0-1小数>,"ny":<0-1小数>,'
+        '"reason":"<简短理由>"}],'
+        '"issues":[{"description":"...","severity":"error|warning|info",'
+        '"location":"第X题","anchor_snippet":"","suggestion":"..."}]}\n'
+        "bbox（强烈推荐）：该题「学生手写答案」在图中的轴对齐外接矩形，归一化坐标 "
+        "[x0,y0,x1,y1]，其中 x 为横向比例(0=左,1=右)，y 为纵向比例(0=上,1=下)；"
+        "必须紧贴手写笔迹范围，勿把整页或整道大题印刷区框进去。\n"
+        "若无法可靠给出 bbox，则用 nx、ny 表示勾/叉中心点：答对时放在手写答案右侧空白、与答案行同高；"
+        "答错时放在错误手写区域的几何中心。\n"
+        "禁止在试卷头部成绩汇总表、密封线、页眉页脚或与本题无关的空白处标注勾叉；"
+        "不要为「总分」「得分」表格单元格单独画叉，除非那格内确有手写作答。\n"
+        "issues 与错题对应；无问题时 issues 可为空数组。"
+    )
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {
+            "role": "user",
+            "content": [
+                kimi_client.build_image_url_block(data_uri, detail="high"),
+                kimi_client.build_text_block("请批改这份作业图片，严格按 JSON 输出。"),
+            ],
+        },
+    ]
+
+    kimi_result = await kimi_client.chat(
+        messages=messages,
+        model=model,
+        temperature=0.2,
+        max_tokens=8192,
+    )
+
+    issues: List[dict] = []
+    marks: List[dict] = []
+    score = 100.0
+    total_score = 100.0
+    summary = ""
+
+    if "choices" in kimi_result and kimi_result["choices"]:
+        raw_content = kimi_result["choices"][0]["message"]["content"]
+        parsed = _parse_kimi_json_content(raw_content)
+        if parsed:
+            score = float(parsed.get("score", 100))
+            total_score = float(parsed.get("total_score", 100))
+            summary = str(parsed.get("summary", "")).strip() or f"得分 {score}/{total_score}"
+            marks = parsed.get("marks") or []
+            issues = parsed.get("issues") or []
+            if not issues and marks:
+                for mk in marks:
+                    qn = mk.get("question_number", "?")
+                    if not mk.get("correct", True):
+                        issues.append(
+                            {
+                                "description": f"第 {qn} 题作答有误",
+                                "severity": "error",
+                                "location": f"第 {qn} 题",
+                                "anchor_snippet": "",
+                                "suggestion": str(mk.get("reason", "请订正")),
+                            }
+                        )
+        else:
+            summary = (raw_content or "")[:300]
+    else:
+        return {
+            "error": kimi_result.get("error", "Kimi API 调用失败"),
+            "detail": kimi_result.get("detail"),
+            "kimi_result": kimi_result,
+        }
+
+    return {
+        "score": score,
+        "total_score": total_score,
+        "summary": summary,
+        "marks": marks,
+        "issues": issues,
+        "kimi_result": kimi_result,
+    }
 
 
 def read_docx_text(content: bytes) -> str:
@@ -1334,6 +1568,149 @@ async def ai_grade_homework(homework_id: str):
         response.release_conn()
     except S3Error:
         raise HTTPException(status_code=404, detail="文件不存在于 MinIO，请确认上传成功")
+
+    # 2b. 图片作业：视觉批改 + Pillow 叠加红勾/红叉
+    img_mime = detect_homework_image_mime(homework_rec.mime_type, original_filename)
+    if img_mime:
+        try:
+            file_content, img_mime = normalize_homework_image_bytes(file_content)
+        except Exception:
+            pass
+        vision = await kimi_grade_homework_image(file_content, img_mime)
+        if vision.get("error"):
+            detail = vision.get("detail") or ""
+            return ResponseModel(
+                code=500,
+                message=f"Kimi 批改失败：{vision['error']}",
+                data={"detail": detail[:2000] if detail else None},
+            )
+
+        marks = vision.get("marks") or []
+        issues = vision.get("issues") or []
+        score = float(vision.get("score", 100))
+        total_score = float(vision.get("total_score", 100))
+        summary = vision.get("summary") or f"得分 {score}/{total_score}"
+
+        try:
+            graded_png = draw_grade_marks_on_image(file_content, marks)
+        except Exception as e:
+            return ResponseModel(code=500, message=f"图片标注失败：{e}", data=None)
+
+        review_id = f"kimi_img_{homework_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        base_name = original_filename.rsplit(".", 1)[0] if "." in original_filename else original_filename
+        graded_filename = f"{base_name}_Kimi批改.png"
+        review_object_name = f"{student_id}/{review_id}/{graded_filename}"
+        kimi_raw = ""
+        try:
+            kr = vision.get("kimi_result") or {}
+            ch = kr.get("choices", [{}])[0].get("message", {}).get("content", "")
+            kimi_raw = (ch or "")[:500]
+        except Exception:
+            pass
+
+        try:
+            client.put_object(
+                BUCKET_REVIEW,
+                review_object_name,
+                io.BytesIO(graded_png),
+                length=len(graded_png),
+                content_type="image/png",
+            )
+        except S3Error:
+            pass
+
+        graded_file_url = f"http://{settings.MINIO_ENDPOINT}/{BUCKET_REVIEW}/{review_object_name}"
+        marks_json = json.dumps(marks, ensure_ascii=False)[:5000]
+
+        async with AsyncSessionLocal() as session:
+            from sqlalchemy import select, update as sql_update
+
+            existing_result = await session.execute(
+                select(HomeworkReview).where(HomeworkReview.homework_id == homework_id)
+            )
+            existing = existing_result.scalar_one_or_none()
+
+            if existing:
+                existing.review_id = review_id
+                existing.original_filename = original_filename
+                existing.graded_filename = graded_filename
+                existing.graded_file_url = graded_file_url
+                existing.file_size = len(graded_png)
+                existing.score = score
+                existing.total_score = total_score
+                existing.status = "completed"
+                existing.course = homework_rec.course
+                existing.issue_count = len(issues)
+                existing.issues_json = json.dumps(issues, ensure_ascii=False)
+                existing.code_issues = issues
+                existing.grading_model = "kimi-vision-image"
+                existing.grading_time = datetime.utcnow()
+                existing.original_content = marks_json
+                existing.review_details = {
+                    "summary": summary,
+                    "marks": marks,
+                    "kimi_raw": kimi_raw,
+                    "graded_image": True,
+                }
+                existing.updated_at = datetime.utcnow()
+                review_rec = existing
+            else:
+                review_rec = HomeworkReview(
+                    review_id=review_id,
+                    homework_id=homework_id,
+                    student_id=student_id,
+                    original_filename=original_filename,
+                    graded_filename=graded_filename,
+                    graded_file_url=graded_file_url,
+                    file_size=len(graded_png),
+                    score=score,
+                    total_score=total_score,
+                    status="completed",
+                    course=homework_rec.course,
+                    issue_count=len(issues),
+                    issues_json=json.dumps(issues, ensure_ascii=False),
+                    code_issues=issues,
+                    grading_model="kimi-vision-image",
+                    grading_time=datetime.utcnow(),
+                    original_content=marks_json,
+                    review_details={
+                        "summary": summary,
+                        "marks": marks,
+                        "kimi_raw": kimi_raw,
+                        "graded_image": True,
+                    },
+                )
+                session.add(review_rec)
+
+            await session.execute(
+                sql_update(Homework).where(Homework.homework_id == homework_id).values(
+                    status="reviewed",
+                    updated_at=datetime.utcnow(),
+                )
+            )
+            await session.commit()
+            await session.refresh(review_rec)
+
+        return ResponseModel(
+            code=200,
+            message="Kimi 图片批改完成",
+            data={
+                "review_id": review_rec.review_id,
+                "homework_id": homework_id,
+                "student_id": student_id,
+                "original_filename": original_filename,
+                "graded_filename": graded_filename,
+                "graded_file_url": graded_file_url,
+                "score": score,
+                "total_score": total_score,
+                "issue_count": len(issues),
+                "issues": issues,
+                "summary": summary,
+                "status": "completed",
+                "graded_image": True,
+                "marks": marks,
+            },
+        )
 
     # 3. 从 docx/doc 提取文本内容（旧版 .doc 会带 [DOC_FORMAT] 前缀，注入批注时用空白 docx）
     code_text = read_docx_text(file_content)

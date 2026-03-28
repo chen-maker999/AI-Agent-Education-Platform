@@ -7,18 +7,19 @@ from pathlib import Path
 
 
 # 工具定义 - 符合 OpenAI function calling 格式
+# 注意：reading 和 editing 工具只允许访问用户在对话中上传的文件
 TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
             "name": "reading",
-            "description": "对文件进行检索和查看",
+            "description": "读取用户在对话中上传的文件内容。当用户上传了文件并询问相关问题时使用此工具。",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "要读取的文件路径（相对于项目根目录）"
+                        "description": "要读取的文件路径或文件名"
                     },
                     "keyword": {
                         "type": "string",
@@ -33,26 +34,26 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "editing",
-            "description": "对文件进行增删和编辑",
+            "description": "修改用户在对话中上传的文件内容。当用户要求修改、补充或更正上传的文件时使用此工具。",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "要编辑的文件路径"
+                        "description": "要编辑的文件路径或文件名"
                     },
                     "action": {
                         "type": "string",
                         "enum": ["create", "edit", "delete"],
-                        "description": "操作类型"
+                        "description": "操作类型：create创建新文件，edit编辑现有文件，delete删除文件"
                     },
                     "content": {
                         "type": "string",
-                        "description": "文件内容（用于创建或编辑）"
+                        "description": "文件完整内容（用于创建新文件）"
                     },
                     "old_string": {
                         "type": "string",
-                        "description": "要替换的旧内容（用于编辑）"
+                        "description": "要替换的旧内容片段（用于编辑）"
                     },
                     "new_string": {
                         "type": "string",

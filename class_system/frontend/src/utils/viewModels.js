@@ -57,6 +57,7 @@ export function summarizeHomework(items = []) {
     return {
       id: item.homework_id || item.id || `hw_${index}`,
       filename: item.filename || item.title || item.name || `作业_${index + 1}.pdf`,
+      mimeType: item.mime_type || item.mimeType || '',
       uploader: item.student_id || item.uploader || item.user_name || item.student_name || item.created_by || '未知用户',
       course: item.course || item.course_name || '未分类课程',
       uploadTime: item.upload_time || item.created_at || '刚刚',

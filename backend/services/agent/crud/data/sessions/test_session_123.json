@@ -1,0 +1,12 @@
+[
+  {
+    "role": "user",
+    "content": "请读取这个文件\n\n【用户上传的附件】\n- test.txt (路径: test_session_123/20260327151009_test.txt)\n\n请使用 reading 工具读取文件内容",
+    "time": "2026-03-27T07:10:43.790876"
+  },
+  {
+    "role": "assistant",
+    "content": "抱歉，调用 AI 服务时出错：API error: 400",
+    "time": "2026-03-27T07:10:56.598648"
+  }
+]

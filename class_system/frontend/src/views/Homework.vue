@@ -247,6 +247,10 @@
                     共发现 <strong>{{ gradingResult.issue_count }}</strong> 个问题
                   </div>
                   <div class="grading-summary">{{ gradingResult.summary }}</div>
+                  <div v-if="gradedImagePreviewUrl" class="graded-image-wrap">
+                    <div class="graded-image-label">批改图预览（红勾/红叉按各题手写区域定位；相机图已做方向校正）</div>
+                    <img :src="gradedImagePreviewUrl" alt="批改后的作业图片" class="graded-image" />
+                  </div>
                 </div>
               </div>
 
@@ -273,7 +277,7 @@
                 <polyline points="7 10 12 15 17 10"/>
                 <line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
-              {{ selectedHomework?.isGenerated ? '下载作业 PDF' : selectedHomework?.hasReview ? '下载批改文件' : '下载' }}
+              {{ selectedHomework?.isGenerated ? '下载作业 PDF' : (gradingResult?.graded_file_url || selectedHomework?.status === 'reviewed' || selectedHomework?.hasReview) ? (isGradedImageOutput ? '下载批改图片' : '下载批改文件') : '下载' }}
             </button>
             <!-- AI 生成作业的删除按钮 -->
             <button
@@ -378,8 +382,8 @@
                     <path d="M14 3H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
                     <polyline points="14,3 14,8 19,8" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
                   </svg>
-                  <span class="file-name">{{ selectedFile?.name || '点击选择文件（支持 doc/docx/pdf）' }}</span>
-                  <input ref="fileInputRef" type="file" class="visually-hidden" @change="onFileChange" />
+                  <span class="file-name">{{ selectedFile?.name || '点击选择文件（支持 doc/docx/pdf 与图片）' }}</span>
+                  <input ref="fileInputRef" type="file" class="visually-hidden" accept=".doc,.docx,.pdf,image/*" @change="onFileChange" />
                 </div>
               </div>
 
@@ -579,6 +583,29 @@ const gradingProgress = ref(0)
 const gradingPhase = ref('')
 const gradingResult = ref(null) // { review_id, score, issues, graded_file_url, ... }
 
+function isHomeworkImageFile(item) {
+  if (!item) return false
+  const m = (item.mimeType || '').toLowerCase()
+  if (m.startsWith('image/')) return true
+  return /\.(png|jpe?g|webp|gif|bmp)$/i.test(item.filename || '')
+}
+
+const gradedImagePreviewUrl = computed(() => {
+  const r = gradingResult.value
+  if (!r?.graded_file_url) return ''
+  const name = (r.graded_filename || '').toLowerCase()
+  if (/\.(png|jpe?g|webp|gif)$/i.test(name) || r.graded_image === true) {
+    return r.graded_file_url
+  }
+  return ''
+})
+
+const isGradedImageOutput = computed(() => {
+  const r = gradingResult.value
+  const name = (r?.graded_filename || '').toLowerCase()
+  return /\.(png|jpe?g|webp|gif)$/i.test(name) || r?.graded_image === true
+})
+
 const uploadForm = ref({
   course: '',
   note: ''
@@ -746,9 +773,6 @@ async function deleteGeneratedHomework(item) {
     ElMessage.error('作业 ID 不存在')
     return
   }
-  if (!confirm(`确定要删除作业「${item.filename}」吗？此操作不可撤销。`)) {
-    return
-  }
   try {
     await homeworkGenApi.delete(item.generatedHomeworkId)
     ElMessage.success('删除成功')
@@ -885,7 +909,7 @@ async function downloadHomework(item) {
 
   try {
     let url = gradedUrl
-    let filename = item?.graded_filename || '批改结果.docx'
+    let filename = gradingResult.value?.graded_filename || item?.graded_filename || '批改结果.docx'
 
     if (reviewId) {
       const meta = await reviewApi.download(reviewId)
@@ -902,22 +926,36 @@ async function downloadHomework(item) {
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     const buf = await r.arrayBuffer()
 
-    const u8 = new Uint8Array(buf)
-    const isZip = u8.length >= 4 && u8[0] === 0x50 && u8[1] === 0x4b
-    if (!isZip) {
-      const probe = new TextDecoder('utf-8', { fatal: false }).decode(u8.slice(0, 256))
-      if (probe.trimStart().startsWith('<') || probe.includes('Error')) {
-        ElMessage.error('下载到的不是 Word 文档，可能是 MinIO 错误页。')
-        return
+    const lower = filename.toLowerCase()
+    const ct = (r.headers.get('content-type') || '').toLowerCase()
+    let blobType = 'application/octet-stream'
+    let outName = filename
+
+    if (lower.endsWith('.png') || ct.includes('image/png')) {
+      blobType = 'image/png'
+      if (!lower.endsWith('.png')) outName = `${filename.replace(/\.[^.]+$/, '')}.png`
+    } else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg') || ct.includes('image/jpeg')) {
+      blobType = 'image/jpeg'
+    } else if (lower.endsWith('.webp') || ct.includes('image/webp')) {
+      blobType = 'image/webp'
+    } else {
+      const u8 = new Uint8Array(buf)
+      const isZip = u8.length >= 4 && u8[0] === 0x50 && u8[1] === 0x4b
+      if (!isZip) {
+        const probe = new TextDecoder('utf-8', { fatal: false }).decode(u8.slice(0, 256))
+        if (probe.trimStart().startsWith('<') || probe.includes('Error')) {
+          ElMessage.error('下载失败：服务器返回了错误页面。')
+          return
+        }
       }
+      blobType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      outName = filename.endsWith('.docx') ? filename : `${filename}.docx`
     }
 
-    const blob = new Blob([buf], {
-      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    })
+    const blob = new Blob([buf], { type: blobType })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = filename.endsWith('.docx') ? filename : `${filename}.docx`
+    a.download = outName
     a.click()
     URL.revokeObjectURL(a.href)
   } catch (e) {
@@ -937,13 +975,21 @@ async function startKimiGrade(item) {
 
   try {
     // 模拟进度（实际由后端控制）
-    const phases = [
-      { progress: 10, text: '正在读取作业文件...' },
-      { progress: 30, text: 'Kimi AI 正在分析代码结构...' },
-      { progress: 60, text: 'Kimi AI 正在生成批注...' },
-      { progress: 80, text: '正在注入 Word 批注...' },
-      { progress: 95, text: '正在保存批改结果...' },
-    ]
+    const phases = isHomeworkImageFile(item)
+      ? [
+          { progress: 10, text: '正在读取作业图片...' },
+          { progress: 35, text: 'Kimi 视觉模型正在识题与判分...' },
+          { progress: 65, text: '正在计算勾叉位置并绘制标注...' },
+          { progress: 88, text: '正在上传批改后图片...' },
+          { progress: 95, text: '正在保存批改记录...' },
+        ]
+      : [
+          { progress: 10, text: '正在读取作业文件...' },
+          { progress: 30, text: 'Kimi AI 正在分析代码结构...' },
+          { progress: 60, text: 'Kimi AI 正在生成批注...' },
+          { progress: 80, text: '正在注入 Word 批注...' },
+          { progress: 95, text: '正在保存批改结果...' },
+        ]
     let phaseIdx = 0
     const tick = setInterval(() => {
       if (phaseIdx < phases.length) {
@@ -994,9 +1040,6 @@ async function removeHomework(item) {
   // 非教师只能删除自己上传的作业
   if (!isTeacher.value && item.uploader !== authStore.user?.id) {
     ElMessage.warning('你只能删除自己上传的作业。')
-    return
-  }
-  if (!confirm(`确定要删除作业「${item.filename}」吗？此操作不可撤销。`)) {
     return
   }
   try {
@@ -1958,7 +2001,7 @@ textarea.input-field { resize: vertical; min-height: 80px; }
 
 /* 文件名文字 */
 .file-name { font-size: 14px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.file-name:empty::before { content: '点击选择文件（支持 doc/docx/pdf）'; color: var(--text-muted); }
+.file-name:empty::before { content: '点击选择文件（支持 doc/docx/pdf 与图片）'; color: var(--text-muted); }
 
 /* 操作行 */
 .auth-switch {
@@ -2088,6 +2131,25 @@ textarea.input-field { resize: vertical; min-height: 80px; }
 :global([data-theme="dark"]) .issue-count { color: #9ca3af; }
 .grading-summary { font-size: 13px; color: #374151; line-height: 1.5; }
 :global([data-theme="dark"]) .grading-summary { color: #d1d5db; }
+
+.graded-image-wrap {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+.graded-image-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-bottom: 8px;
+}
+.graded-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
 .btn-success {
   background: #059669 !important;
   color: #fff !important;

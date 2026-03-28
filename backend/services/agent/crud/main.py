@@ -4,7 +4,7 @@ import httpx
 import asyncio
 from uuid import uuid4
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -24,6 +24,9 @@ AGENTS_FILE = AGENT_DATA_DIR / "agents.json"
 
 # 最大工具调用次数，防止无限循环
 MAX_TOOL_CALLS = 10
+
+# Moonshot：仅 kimi-k2.5 / kimi-k2.5-flash 支持 image_url；勿用 env 默认的 turbo-preview 调多模态
+KIMI_VISION_MODELS = frozenset({"kimi-k2.5", "kimi-k2.5-flash"})
 
 
 async def _download_url_to_knowledge(url: str, filename: str, course_id: str) -> dict:
@@ -136,6 +139,17 @@ class ChatRequest(BaseModel):
     message: str
     student_id: str = "default"
     session_id: Optional[str] = None
+    # 模型参数
+    model: Optional[str] = "kimi-k2.5"
+    temperature: Optional[float] = 0.7
+    top_p: Optional[float] = 0.9
+    max_tokens: Optional[int] = 4096
+    frequency_penalty: Optional[float] = 0.0
+    presence_penalty: Optional[float] = 0.0
+    # 工具权限
+    tools: Optional[List[Dict[str, Any]]] = None
+    # 多模态支持：图片/文档 base64 数据
+    files: Optional[List[Dict[str, str]]] = None  # [{type: "image/jpeg", data: "base64..."}]
 
 
 # --- CRUD ---
@@ -259,7 +273,13 @@ async def _call_llm(
 
 async def _call_llm_with_tools(
     messages: List[dict],
-    tools: List[dict]
+    tools: List[dict],
+    model: str = "kimi-k2.5",
+    temperature: float = 1.0,  # kimi-k2.5 模型只接受 temperature=1
+    max_tokens: int = 4096,
+    top_p: float = 1.0,
+    frequency_penalty: float = 0.0,
+    presence_penalty: float = 0.0
 ) -> dict:
     """
     调用 Kimi API 获取 LLM 回复（支持 Function Calling）
@@ -273,18 +293,38 @@ async def _call_llm_with_tools(
     """
     from common.integration.kimi import kimi_client
 
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"[_call_llm_with_tools] model={model}, msgs={len(messages)}, tools={len(tools)}")
+    for i, m in enumerate(messages):
+        c = m.get("content", "")
+        role = m.get("role", "?")
+        if isinstance(c, list):
+            blocks = [{"type": b.get("type") for b in c}]
+            logger.info(f"  msg[{i}] role={role} blocks={blocks}")
+        else:
+            logger.info(f"  msg[{i}] role={role} content={str(c)[:100]}")
+
     try:
         result = await kimi_client.chat(
             messages=messages,
             tools=tools,
-            temperature=0.7,
-            max_tokens=2048
+            model=model,
+            temperature=1.0,  # kimi-k2.5 模型只接受 temperature=1
+            max_tokens=max_tokens,
+            top_p=1.0,  # kimi-k2.5 模型需要使用 1.0
+            frequency_penalty=frequency_penalty,
+            presence_penalty=presence_penalty
         )
 
         if "error" in result:
+            detail = result.get("detail") or ""
+            err_text = f"抱歉，调用 AI 服务时出错：{result['error']}"
+            if detail:
+                err_text = err_text + " " + detail[:800]
             return {
                 "type": "message",
-                "content": f"抱歉，调用 AI 服务时出错：{result['error']}"
+                "content": err_text
             }
 
         choices = result.get("choices", [])
@@ -297,12 +337,13 @@ async def _call_llm_with_tools(
         if "tool_calls" in message and message["tool_calls"]:
             return {
                 "type": "tool_calls",
-                "tool_calls": message["tool_calls"]
+                "tool_calls": message["tool_calls"],
+                "_raw_message": message  # 保存原始消息，包含 reasoning_content
             }
 
         # 普通文本回复
         content = message.get("content", "")
-        return {"type": "message", "content": content}
+        return {"type": "message", "content": content, "_raw_message": message}
 
     except Exception as e:
         return {"type": "message", "content": f"抱歉，调用 AI 服务时出错：{str(e)}"}
@@ -319,7 +360,60 @@ async def agent_chat(data: ChatRequest):
     session_id = data.session_id or str(uuid4())
     history = _load_session(session_id)
 
-    # 用户消息入历史
+    # 构建用户消息（支持多模态）
+    # 所有文件都上传到 Kimi 获取 file_id，然后用 file 格式引用
+    user_msg = {"role": "user", "content": data.message}
+    
+    # 处理文件上传
+    file_messages = []  # 存储多模态消息块
+    file_text_contents = []  # 存储文档抽取的文本内容
+    
+    if data.files:
+        from common.integration.kimi import kimi_client
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        for f in data.files:
+            file_type = f.get("type", "application/octet-stream")
+            file_data = f.get("data", "")
+            data_len = len(file_data)
+            
+            logger.info(f"正在处理文件: type={file_type}, data_len={data_len}")
+            
+            # 空数据检查
+            if not file_data:
+                logger.warning("文件数据为空，跳过")
+                continue
+            
+            # 图片文件：使用 image_url 格式（兼容 kimi-k2.5）
+            if file_type.startswith("image/"):
+                # 构建 image_url 格式（将 base64 转为 data URL）
+                data_url = f"data:{file_type};base64,{file_data}"
+                file_messages.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": data_url
+                    }
+                })
+                logger.info(f"图片已转换为 image_url 格式: type={file_type}, size={data_len}")
+            elif file_type.startswith("video/"):
+                # 视频暂不支持，使用 text_only 模式提示
+                logger.warning(f"视频文件暂不支持: type={file_type}")
+            else:
+                # 文档使用 file-extract，获取文本内容作为 system 消息
+                # 先上传获取 file_id
+                file_id = await kimi_client.upload_file(file_data, file_type, "file-extract")
+                if file_id:
+                    content = await kimi_client.get_file_content(file_id)
+                    if content:
+                        file_text_contents.append(content)
+                        logger.info(f"文档内容获取成功: content_len={len(content)}")
+                    else:
+                        logger.warning(f"文档内容获取失败，但文件已上传: file_id={file_id}")
+                else:
+                    logger.warning(f"文档上传失败: type={file_type}")
+    
+    # 用户消息入历史（存储文本形式）
     history.append({
         "role": "user",
         "content": data.message,
@@ -340,14 +434,29 @@ async def agent_chat(data: ChatRequest):
     if tools:
         tool_names = [t["function"]["name"] for t in tools]
         core_rules = ""
+        core_rules += "\n【重要】你是一个智能助手，可以通过调用工具来完成任务。"
+
+        # 文件读写工具规则（只针对上传的文件）
+        if 'reading' in tool_names or 'editing' in tool_names:
+            core_rules += "\n【文件操作】reading 和 editing 工具只能访问用户在当前对话中上传的文件，"
+            core_rules += "不能访问工作区、项目目录或其他系统文件。当用户提到「我上传的文件」「刚才的文件」时才使用文件工具。"
 
         # download_to_knowledge 强制规则
         if 'download_to_knowledge' in tool_names:
-            core_rules += "\n【最高优先级 - 必须遵守】当用户要求保存资料到知识库时：1) 立即调用 download_to_knowledge 工具；2) course_id='default'；3) 禁止询问任何路径问题，直接执行！"
+            core_rules += "\n【最高优先级】当用户要求保存资料到知识库时："
+            core_rules += "1) 立即调用 download_to_knowledge 工具；2) course_id='default'；3) 禁止询问任何路径问题，直接执行！"
 
         # 添加知识库检索工具提示
         if 'knowledge_search' in tool_names:
             core_rules += "\n【知识库检索】当用户询问需要查找资料、解释概念、回答与已上传文档相关的问题时，可以调用 knowledge_search 工具搜索知识库。"
+
+        # 联网搜索规则
+        if 'web_search' in tool_names:
+            core_rules += "\n【联网搜索】当用户询问最新信息、新闻、实时数据时，应该调用 web_search 工具。"
+
+        # 终端命令规则
+        if 'terminal' in tool_names:
+            core_rules += "\n【终端命令】当用户要求运行代码、安装依赖、执行命令时，可以调用 terminal 工具。注意：只执行安全的命令。"
 
         # 添加工具列表
         core_rules += f"\n\n可用工具：{', '.join(tool_names)}"
@@ -356,15 +465,50 @@ async def agent_chat(data: ChatRequest):
         llm_messages = [{"role": "system", "content": core_rules + "\n\n" + system_prompt}]
     else:
         llm_messages = [{"role": "system", "content": system_prompt}]
+    
+    # 添加上传文档的内容（作为 system 消息）
+    if file_text_contents:
+        for fc in file_text_contents:
+            truncated_content = fc[:10000]
+            if len(fc) > 10000:
+                truncated_content += f"\n\n[文件内容已截断，原长度 {len(fc)} 字符]"
+            llm_messages.append({
+                "role": "system",
+                "content": f"【用户上传的文档内容】\n{truncated_content}"
+            })
 
-    # 添加历史消息
-    for msg in history:
+    # 添加历史消息（仅文本形式）
+    for msg in history[:-1]:  # 不包含当前用户消息
         llm_messages.append({"role": msg["role"], "content": msg["content"]})
+    
+    # 构建用户消息（支持多模态）
+    if file_messages:
+        user_content = []
+        for block in file_messages:
+            user_content.append(block)
+        user_content.append({
+            "type": "text",
+            "text": data.message
+        })
+        llm_messages.append({"role": "user", "content": user_content})
+    else:
+        llm_messages.append({"role": "user", "content": data.message})
 
     # 定义 has_tools
     has_tools = len(tools) > 0
     tool_names_list = [t["function"]["name"] for t in tools] if has_tools else []
     tool_calls_log = []  # 定义在前面，供下载检测逻辑使用
+    
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"[Agent Chat] has_tools={has_tools}, tool_names={tool_names_list}")
+    logger.info(f"[Agent Chat] 多模态消息: user_msg type={'list' if isinstance(user_msg.get('content'), list) else 'str'}")
+
+    requested_model = data.model or "kimi-k2.5"
+    llm_model = requested_model
+    if file_messages:
+        if llm_model not in KIMI_VISION_MODELS:
+            llm_model = "kimi-k2.5"
 
     # 【关键修复】检测用户消息中的"下载到知识库"意图，自动执行工具
     if has_tools and 'download_to_knowledge' in tool_names_list:
@@ -416,10 +560,20 @@ async def agent_chat(data: ChatRequest):
                 )
 
     # 正常流程：工具调用循环
+    last_llm_message = None  # 保存最后一次 LLM 返回的消息（用于 reasoning_content）
     if has_tools:
         for call_count in range(MAX_TOOL_CALLS):
             # 调用 LLM（带工具）
-            llm_response = await _call_llm_with_tools(llm_messages, tools)
+            llm_response = await _call_llm_with_tools(
+                llm_messages, 
+                tools,
+                model=llm_model,
+                temperature=1.0,  # kimi-k2.5 模型只接受 temperature=1
+                max_tokens=data.max_tokens or 4096,
+                top_p=1.0,  # kimi-k2.5 模型需要使用 1.0
+                frequency_penalty=data.frequency_penalty or 0.0,
+                presence_penalty=data.presence_penalty or 0.0
+            )
 
             if llm_response["type"] == "message":
                 # 普通文本回复
@@ -429,6 +583,7 @@ async def agent_chat(data: ChatRequest):
             elif llm_response["type"] == "tool_calls":
                 # 收到工具调用请求
                 tool_calls = llm_response["tool_calls"]
+                last_llm_message = llm_response.get("_raw_message")  # 获取原始消息
 
                 for tc in tool_calls:
                     tool_name = tc["function"]["name"]
@@ -442,14 +597,22 @@ async def agent_chat(data: ChatRequest):
                         tool_args = {}
 
                     # 添加 assistant 的 tool_call 消息
-                    llm_messages.append({
+                    # kimi-k2.5 模型需要包含 reasoning_content
+                    tool_call_msg = {
                         "role": "assistant",
                         "content": None,
                         "tool_calls": [tc]
-                    })
+                    }
+                    # 如果消息中有 reasoning_content，需要传递
+                    if last_llm_message and last_llm_message.get("reasoning_content"):
+                        tool_call_msg["reasoning_content"] = last_llm_message.get("reasoning_content")
+                    llm_messages.append(tool_call_msg)
+
+                    # 构建后端地址
+                    backend_url = f"http://{settings.HOST or '127.0.0.1'}:{settings.PORT or 8000}"
 
                     # 执行工具
-                    tool_result = await execute_tool(tool_name, tool_args)
+                    tool_result = await execute_tool(tool_name, tool_args, base_url=backend_url)
 
                     # 记录工具调用
                     tool_calls_log.append({
@@ -472,8 +635,31 @@ async def agent_chat(data: ChatRequest):
             # 达到最大调用次数
             response_text = "抱歉，执行了太多工具调用，请简化你的问题。"
     else:
-        # 没有工具，使用简单的 LLM 调用
-        response_text = await _call_llm(llm_messages)
+        last_user = llm_messages[-1] if llm_messages else None
+        if last_user and last_user.get("role") == "user" and isinstance(last_user.get("content"), list):
+            from common.integration.kimi import kimi_client
+            result = await kimi_client.chat(
+                messages=llm_messages,
+                model=llm_model,
+                temperature=1.0,
+                max_tokens=data.max_tokens or 4096,
+                top_p=1.0,
+                frequency_penalty=data.frequency_penalty or 0.0,
+                presence_penalty=data.presence_penalty or 0.0,
+            )
+            if "error" in result:
+                detail = result.get("detail") or ""
+                response_text = f"抱歉，调用 AI 服务时出错：{result['error']}"
+                if detail:
+                    response_text = response_text + " " + detail[:800]
+            else:
+                choices = result.get("choices", [])
+                if choices:
+                    response_text = (choices[0].get("message") or {}).get("content", "") or "（无回复）"
+                else:
+                    response_text = "抱歉，没有收到 AI 的回复。"
+        else:
+            response_text = await _call_llm(llm_messages)
 
     # AI 回复入历史
     history.append({

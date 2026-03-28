@@ -3,9 +3,10 @@
 import os
 import subprocess
 import asyncio
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
 from common.models.response import ResponseModel
 import httpx
@@ -548,3 +549,92 @@ async def list_builtin_tools():
         {"id": "knowledge_search", "name": "知识库检索", "desc": "搜索知识库中的相关资料"},
     ]
     return ResponseModel(code=200, message="success", data={"tools": tools})
+
+
+# ---------- 8. 文件上传 ----------
+@router.post("/upload/{session_id}", response_model=ResponseModel)
+async def upload_file_for_session(
+    session_id: str,
+    file: UploadFile = File(..., description="要上传的文件")
+):
+    """
+    上传文件到指定会话的工作区，供 reading/editing 工具访问
+
+    session_id 用于区分不同对话会话的文件
+    """
+    try:
+        # 安全检查：限制 session_id 格式
+        if not session_id.replace("_", "").replace("-", "").isalnum():
+            return ResponseModel(code=400, message="无效的会话ID")
+
+        # 创建会话目录
+        session_dir = AGENT_WORKSPACE / session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+
+        # 生成安全文件名
+        original_name = file.filename or "unnamed"
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        safe_filename = f"{timestamp}_{original_name}"
+
+        # 保存文件
+        file_path = session_dir / safe_filename
+        content = await file.read()
+
+        # 限制文件大小（10MB）
+        max_size = 10 * 1024 * 1024
+        if len(content) > max_size:
+            return ResponseModel(code=413, message="文件大小超过限制（最大10MB）")
+
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        # 返回相对路径（供 reading/editing 工具使用）
+        relative_path = f"{session_id}/{safe_filename}"
+
+        return ResponseModel(
+            code=200,
+            message="success",
+            data={
+                "filename": original_name,
+                "saved_as": safe_filename,
+                "path": relative_path,
+                "size": len(content),
+                "session_id": session_id
+            }
+        )
+
+    except Exception as e:
+        import traceback
+        print(f"[ERROR upload_file] {traceback.format_exc()}", flush=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/files/{session_id}", response_model=ResponseModel)
+async def list_session_files(session_id: str):
+    """
+    列出指定会话已上传的文件
+    """
+    try:
+        # 安全检查
+        if not session_id.replace("_", "").replace("-", "").isalnum():
+            return ResponseModel(code=400, message="无效的会话ID")
+
+        session_dir = AGENT_WORKSPACE / session_id
+        if not session_dir.exists():
+            return ResponseModel(code=200, message="success", data={"files": []})
+
+        files = []
+        for f in session_dir.iterdir():
+            if f.is_file():
+                stat = f.stat()
+                files.append({
+                    "name": f.name,
+                    "path": f"{session_id}/{f.name}",
+                    "size": stat.st_size,
+                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                })
+
+        return ResponseModel(code=200, message="success", data={"files": files})
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

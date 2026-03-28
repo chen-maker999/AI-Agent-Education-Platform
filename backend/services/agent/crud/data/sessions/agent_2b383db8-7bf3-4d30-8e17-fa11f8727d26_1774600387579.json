@@ -1,0 +1,12 @@
+[
+  {
+    "role": "user",
+    "content": "分析图片\n\n【用户上传了 1 个文件，请阅读后回答。】",
+    "time": "2026-03-27T08:33:07.592658"
+  },
+  {
+    "role": "assistant",
+    "content": "抱歉，调用 AI 服务时出错：Unexpected error: URL too long",
+    "time": "2026-03-27T08:33:24.348279"
+  }
+]

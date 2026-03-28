@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const api = axios.create({
   baseURL: '/api/v1',
-  timeout: 30000
+  timeout: 120000  // 120秒超时，支持文件上传和AI处理
 })
 
 api.interceptors.request.use(config => {
@@ -162,20 +162,30 @@ export const ragApi = {
     tools: data.tools || null
   }),
 
-  // 流式对话
+    // 流式对话
   chatStream: (data) => {
     const token = localStorage.getItem('token')
+
+    // kimi-k2.5 只接受固定的 top_p=0.95（强制 0.95，非 0.9）
+    const effectiveTopP = (data.model === 'kimi-k2.5' || data.model === undefined)
+      ? 0.95
+      : (data.topP !== undefined ? data.topP : 0.9)
+
     const payload = {
       message: data.query || data.message || '',
       student_id: data.student_id || 'guest',
       session_id: data.session_id || `chat_${data.mode || 'general'}`,
       mode: data.mode || 'general',
-      context: data.context || {}
+      context: data.context || {},
+      model: data.model || 'kimi-k2.5',
+      temperature: data.temperature !== undefined ? data.temperature : 0.7,
+      top_p: effectiveTopP,
+      max_tokens: data.maxTokens || 4096,
+      frequency_penalty: data.frequencyPenalty !== undefined ? data.frequencyPenalty : 0,
+      presence_penalty: data.presencePenalty !== undefined ? data.presencePenalty : 0,
+      tools: data.tools || null
     }
-    
-    // Debug log
-    console.log('chatStream request:', payload)
-    
+
     return fetch('/api/v1/chat/message/stream', {
       method: 'POST',
       headers: {
@@ -277,6 +287,40 @@ export const reviewApi = {
       }
     })
   }
+}
+
+// Agent 智能体 API
+export const agentApi = {
+  // 获取智能体列表
+  list: () => api.get('/agent'),
+  // 获取单个智能体
+  get: (agentId) => api.get(`/agent/${agentId}`),
+  // 创建智能体
+  create: (data) => api.post('/agent', data),
+  // 更新智能体
+  update: (agentId, data) => api.put(`/agent/${agentId}`, data),
+  // 删除智能体
+  delete: (agentId) => api.delete(`/agent/${agentId}`),
+  // 与智能体对话（支持 Function Calling）
+  chat: (data) => api.post('/agent/chat', {
+    agent_id: data.agent_id,
+    message: data.message,
+    student_id: data.student_id || 'guest',
+    session_id: data.session_id,
+    files: data.files || null  // 支持多模态：[{type, data}]
+  }),
+  // 获取内置工具列表
+  listTools: () => api.get('/agent/tools/list'),
+  // 上传文件到 Agent 工作区
+  uploadFile: (sessionId, file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post(`/agent/tools/upload/${sessionId}`, formData, {
+      headers: { 'Content-Type': undefined } // 让浏览器自动设置，包括 boundary
+    })
+  },
+  // 列出会话已上传的文件
+  listFiles: (sessionId) => api.get(`/agent/tools/files/${sessionId}`)
 }
 
 export default api
