@@ -522,7 +522,10 @@ const modelOptions = [
   { value: 'kimi-k2-thinking-turbo', label: 'kimi-k2-thinking-turbo', desc: 'K2 长思考模型的高速版本，支持 256k 上下文，擅长深度推理，输出速度提升至每秒 60-100 tokens' },
   { value: 'moonshot-v1-8k', label: 'moonshot-v1-8k', desc: '适用于生成短文本，上下文长度 8k' },
   { value: 'moonshot-v1-32k', label: 'moonshot-v1-32k', desc: '适用于生成长文本，上下文长度 32k' },
-  { value: 'moonshot-v1-128k', label: 'moonshot-v1-128k', desc: '适用于生成超长文本，上下文长度 128k' }
+  { value: 'moonshot-v1-128k', label: 'moonshot-v1-128k', desc: '适用于生成超长文本，上下文长度 128k' },
+  { value: 'moonshot-v1-8k-vision-preview', label: 'moonshot-v1-8k-vision-preview', desc: 'Vision 视觉模型，理解图片内容并输出文本，上下文长度 8k' },
+  { value: 'moonshot-v1-32k-vision-preview', label: 'moonshot-v1-32k-vision-preview', desc: 'Vision 视觉模型，理解图片内容并输出文本，上下文长度 32k' },
+  { value: 'moonshot-v1-128k-vision-preview', label: 'moonshot-v1-128k-vision-preview', desc: 'Vision 视觉模型，理解图片内容并输出文本，上下文长度 128k' }
 ]
 
 

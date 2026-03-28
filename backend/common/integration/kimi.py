@@ -11,8 +11,15 @@ import httpx
 class KimiClient:
     """Kimi API client with multimodal support (vision, file understanding)."""
 
-    # 支持 image_url 的视觉模型（kimi-k2-turbo-preview 等会返回 Image input not supported）
+    # 支持 image_url 的视觉模型
+    # Kimi 视觉模型
     VISION_MODELS = {"kimi-k2.5", "kimi-k2.5-flash"}
+    # Moonshot 视觉模型（支持 image_url 传入图片内容）
+    VISION_MODELS |= {
+        "moonshot-v1-8k-vision-preview",
+        "moonshot-v1-32k-vision-preview",
+        "moonshot-v1-128k-vision-preview",
+    }
 
     # Supported file formats for file-extract
     SUPPORTED_FILE_EXTENSIONS = {
@@ -555,8 +562,8 @@ class KimiClient:
         }
         
         model = model or self.model
-        is_kimi_k25 = model == "kimi-k2.5"
-        
+        is_kimi_k25 = model in {"kimi-k2.5", "kimi-k2.5-flash"}
+
         # kimi-k2.5 model requires temperature=1
         payload = {
             "model": model,
@@ -568,6 +575,9 @@ class KimiClient:
         # Add optional parameters
         if top_p and top_p != 0.9 and not is_kimi_k25:
             payload["top_p"] = top_p
+        elif is_kimi_k25:
+            # kimi-k2.5 固定要求 top_p=0.95
+            payload["top_p"] = 0.95
         if frequency_penalty != 0.0:
             payload["frequency_penalty"] = frequency_penalty
         if presence_penalty != 0.0:
@@ -694,6 +704,9 @@ class KimiClient:
 
         if top_p and top_p != 0.9 and not is_kimi_k25:
             payload["top_p"] = top_p
+        elif is_kimi_k25:
+            # kimi-k2.5 固定要求 top_p=0.95
+            payload["top_p"] = 0.95
         if frequency_penalty != 0.0:
             payload["frequency_penalty"] = frequency_penalty
         if presence_penalty != 0.0:

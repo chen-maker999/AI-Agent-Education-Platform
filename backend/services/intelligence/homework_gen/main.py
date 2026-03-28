@@ -328,10 +328,11 @@ def generate_homework_pdf(
     elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#e0e0e0')))
     elements.append(Spacer(1, 0.3*cm))
 
-    # 注意事项
+    # 注意事项（必须指定中文字体；继承 Normal 会得到 Helvetica，中文会显示为灰色方框）
     notice_style = ParagraphStyle('Notice', parent=styles['Normal'],
         fontSize=9, spaceAfter=12, leading=14,
-        textColor=colors.HexColor('#888888'))
+        textColor=colors.HexColor('#888888'),
+        fontName=font_name)
     elements.append(Paragraph(
         "【注意事项】请认真阅读题目，独立完成。简答题和编程题请写出完整过程或代码。",
         notice_style))
@@ -390,7 +391,7 @@ def generate_homework_pdf(
 
             if knowledge:
                 elements.append(Paragraph(
-                    f"<font color='#888888' size='9'>📌 {knowledge}</font>",
+                    f"<font color='#888888' size='9'>【知识点】{knowledge}</font>",
                     opt_style))
 
             elements.append(Spacer(1, 0.2*cm))

@@ -663,11 +663,19 @@ async function sendMessage() {
     }
 
     // 普通模式（通用问答 / 知识库对话）
+    // agentConfig 的滑块值是 0-100，API 需要 0-1 float 及 snake_case 命名
     const response = await ragApi.chatStream({
       query: text,
       student_id: authStore.user?.id || 'guest',
       session_id: `chat_${selectedMode.value}`,
-      mode: selectedMode.value === 'general' ? 'general' : 'learning'
+      mode: selectedMode.value === 'general' ? 'general' : 'learning',
+      model: agentConfig.model,
+      temperature: agentConfig.temperature / 100,
+      topP: agentConfig.topP / 100,
+      maxTokens: agentConfig.maxTokens,
+      frequencyPenalty: agentConfig.frequencyPenalty,
+      presencePenalty: agentConfig.presencePenalty,
+      tools: agentConfig.tools
     })
 
     // 检查响应状态

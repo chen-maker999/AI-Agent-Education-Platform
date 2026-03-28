@@ -646,11 +646,12 @@ async def send_message_stream(request: ChatRequest):
 
             # kimi-k2.5 enforces fixed top_p=0.95; other values cause silent failures
             model_for_call = request.model or "kimi-k2.5"
-            effective_top_p = request.top_p if model_for_call != "kimi-k2.5" else 1.0
+            effective_top_p = request.top_p if model_for_call not in {"kimi-k2.5", "kimi-k2.5-flash"} else 0.95
+            effective_temperature = request.temperature if model_for_call not in {"kimi-k2.5", "kimi-k2.5-flash"} else 1.0
 
             async for chunk in kimi_client.chat_stream(
                 messages,
-                temperature=1.0,  # kimi-k2.5 模型只接受 temperature=1
+                temperature=effective_temperature,
                 max_tokens=request.max_tokens or 4096,
                 top_p=effective_top_p,
                 frequency_penalty=request.frequency_penalty or 0.0,
