@@ -32,6 +32,7 @@ class User(Base):
     username = Column(String(50), unique=True, nullable=False, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
+    phone = Column(String(20), nullable=True)
     role = Column(String(20), default="student")
     status = Column(String(20), default="active")
     roles = Column(String(500), default="[]")
@@ -68,6 +69,7 @@ async def init_auth_db():
                 username VARCHAR(50) UNIQUE NOT NULL,
                 email VARCHAR(255) UNIQUE NOT NULL,
                 hashed_password VARCHAR(255) NOT NULL,
+                phone VARCHAR(20),
                 role VARCHAR(20) DEFAULT 'student',
                 status VARCHAR(20) DEFAULT 'active',
                 roles VARCHAR(500) DEFAULT '[]',
@@ -75,6 +77,17 @@ async def init_auth_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
+        """))
+        await conn.execute(text("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'users' AND column_name = 'phone'
+                ) THEN
+                    ALTER TABLE users ADD COLUMN phone VARCHAR(20);
+                END IF;
+            END $$;
         """))
         await conn.commit()
 
@@ -160,6 +173,7 @@ async def get_current_user(
         id=str(user.id),
         username=user.username,
         email=user.email,
+        phone=user.phone,
         role=user.role,
         status=user.status,
         roles=user.roles.split(',') if user.roles else [user.role],
@@ -267,3 +281,113 @@ async def logout():
 async def get_me(current_user: UserResponse = Depends(get_current_user)):
     """Get current user info."""
     return ResponseModel(code=200, message="获取成功", data=current_user)
+
+
+class ProfileUpdate(BaseModel):
+    username: Optional[str] = Field(None, min_length=3, max_length=50)
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = Field(None, max_length=20)
+
+
+class PasswordChange(BaseModel):
+    old_password: str
+    new_password: str = Field(..., min_length=8)
+
+
+async def get_user_by_id_or_username(identifier: str) -> Optional[User]:
+    """Get user from database by username."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(User).where(User.username == identifier))
+        return result.scalar_one_or_none()
+
+
+async def get_user_by_id(id_: str) -> Optional[User]:
+    """Get user from database by id."""
+    async with AsyncSessionLocal() as session:
+        from sqlalchemy import text
+        result = await session.execute(text("SELECT * FROM users WHERE id = :id"), {"id": id_})
+        row = result.fetchone()
+        if row:
+            user = User()
+            user.id = row[0]
+            user.username = row[1]
+            user.email = row[2]
+            user.hashed_password = row[3]
+            user.phone = row[4] if len(row) > 4 else None
+            user.role = row[5] if len(row) > 5 else "student"
+            user.status = row[6] if len(row) > 6 else "active"
+            user.roles = row[7] if len(row) > 7 else "[]"
+            user.permissions = row[8] if len(row) > 8 else "[]"
+            user.created_at = row[9] if len(row) > 9 else None
+            user.updated_at = row[10] if len(row) > 10 else None
+            return user
+        return None
+
+
+@router.patch("/me", response_model=ResponseModel)
+async def update_profile(
+    data: ProfileUpdate,
+    current_user: UserResponse = Depends(get_current_user),
+):
+    """Update current user profile."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(User).where(User.username == current_user.username))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+        if data.username is not None and data.username != user.username:
+            exist = await session.execute(select(User).where(User.username == data.username))
+            if exist.scalar_one_or_none():
+                raise HTTPException(status_code=409, detail="用户名已存在")
+            user.username = data.username
+
+        if data.email is not None and data.email != user.email:
+            exist = await session.execute(select(User).where(User.email == data.email))
+            if exist.scalar_one_or_none():
+                raise HTTPException(status_code=409, detail="邮箱已被使用")
+            user.email = data.email
+
+        if data.phone is not None:
+            user.phone = data.phone
+
+        await session.commit()
+        await session.refresh(user)
+
+        return ResponseModel(
+            code=200,
+            message="资料更新成功",
+            data=UserResponse(
+                id=str(user.id),
+                username=user.username,
+                email=user.email,
+                phone=user.phone,
+                role=user.role,
+                status=user.status,
+                roles=user.roles.split(',') if user.roles else [user.role],
+                permissions=user.permissions.split(',') if user.permissions else [],
+                created_at=user.created_at.isoformat() if user.created_at else None,
+                updated_at=user.updated_at.isoformat() if user.updated_at else None,
+            ),
+        )
+
+
+@router.patch("/password", response_model=ResponseModel)
+async def change_password(
+    data: PasswordChange,
+    current_user: UserResponse = Depends(get_current_user),
+):
+    """Change current user password."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(User).where(User.username == current_user.username))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+        if not verify_password(data.old_password, user.hashed_password):
+            raise HTTPException(status_code=400, detail="原密码错误")
+
+        user.hashed_password = get_password_hash(data.new_password)
+        await session.commit()
+
+        return ResponseModel(code=200, message="密码修改成功，请重新登录")

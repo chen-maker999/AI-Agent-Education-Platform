@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const api = axios.create({
   baseURL: '/api/v1',
-  timeout: 120000  // 120秒超时，支持文件上传和AI处理
+  timeout: 300000  // 300秒超时，支持文件上传和大图片AI处理
 })
 
 api.interceptors.request.use(config => {
@@ -55,7 +55,9 @@ export const authApi = {
   register: (data) => api.post('/auth/register', data),
   logout: () => api.post('/auth/logout'),
   refresh: (data) => api.post('/auth/refresh', data),
-  me: () => api.get('/auth/me')
+  me: () => api.get('/auth/me'),
+  updateProfile: (data) => api.patch('/auth/me', data),
+  changePassword: (data) => api.patch('/auth/password', data)
 }
 
 export const rolesApi = {

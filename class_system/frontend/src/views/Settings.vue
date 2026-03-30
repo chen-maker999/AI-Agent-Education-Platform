@@ -100,7 +100,7 @@
 
             <div class="panel-group">
               <h3>账号安全</h3>
-              <div class="setting-row clickable">
+              <div class="setting-row clickable" @click="showPasswordModal = true">
                 <div class="setting-info">
                   <span class="setting-label">修改密码</span>
                   <span class="setting-desc">上次修改于 30 天前</span>
@@ -125,9 +125,13 @@
             </div>
 
             <div class="panel-actions">
-              <button class="macos-btn primary" @click="saveAccount">存储更改</button>
+              <button class="macos-btn primary" @click="saveAccount" :disabled="profileLoading">
+                {{ profileLoading ? '保存中...' : '存储更改' }}
+              </button>
               <button class="macos-btn secondary" @click="resetAccount">恢复默认</button>
             </div>
+            <div v-if="profileSuccess" class="success-msg" style="margin: 0 20px 14px; font-size: 12px; color: #34c759; padding: 6px 12px; background: rgba(52,199,89,0.1); border-radius: 6px;">✓ 资料更新成功</div>
+            <div v-if="profileError" class="error-msg" style="margin: 0 20px 14px; font-size: 12px; color: #ff3b30; padding: 6px 12px; background: rgba(255,59,48,0.1); border-radius: 6px;">{{ profileError }}</div>
           </div>
         </section>
 
@@ -332,12 +336,48 @@
         </section>
       </main>
     </div>
+
+    <!-- 修改密码弹窗 -->
+    <div class="modal-overlay" v-if="showPasswordModal" @click.self="showPasswordModal = false">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>修改密码</h3>
+          <button class="modal-close" @click="showPasswordModal = false">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-field">
+            <label>当前密码</label>
+            <input type="password" v-model="passwordForm.oldPassword" placeholder="请输入当前密码" />
+          </div>
+          <div class="modal-field">
+            <label>新密码</label>
+            <input type="password" v-model="passwordForm.newPassword" placeholder="至少 8 位" />
+          </div>
+          <div class="modal-field">
+            <label>确认新密码</label>
+            <input type="password" v-model="passwordForm.confirmPassword" placeholder="再次输入新密码" />
+          </div>
+          <p class="modal-error" v-if="passwordError">{{ passwordError }}</p>
+        </div>
+        <div class="modal-footer">
+          <button class="macos-btn secondary" @click="showPasswordModal = false">取消</button>
+          <button class="macos-btn primary" :disabled="passwordLoading" @click="handleChangePassword">
+            {{ passwordLoading ? '修改中...' : '确认修改' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { authApi } from '@/api/index'
 
 const authStore = useAuthStore()
 
@@ -423,7 +463,27 @@ const profile = ref({
   username: authStore.user?.username || 'student_01',
   role: authStore.user?.role || '学生',
   email: authStore.user?.email || 'student@example.com',
-  phone: authStore.user?.phone || '138****8888'
+  phone: authStore.user?.phone || ''
+})
+const profileLoading = ref(false)
+const profileSuccess = ref(false)
+const profileError = ref('')
+
+onMounted(async () => {
+  try {
+    const res = await authApi.me()
+    if (res.code === 200 && res.data) {
+      authStore.setUser(res.data)
+      profile.value = {
+        username: res.data.username || profile.value.username,
+        role: res.data.role || profile.value.role,
+        email: res.data.email || profile.value.email,
+        phone: res.data.phone || ''
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
 })
 
 // 通知设置
@@ -467,18 +527,88 @@ const reduceMotion = ref(false)
 const searchFirst = ref(true)
 const mobileNav = ref(true)
 
-// 保存与重置方法
-function saveAccount() {
-  console.log('保存账号信息:', profile.value)
+// 修改密码弹窗
+const showPasswordModal = ref(false)
+const passwordForm = ref({ oldPassword: '', newPassword: '', confirmPassword: '' })
+const passwordLoading = ref(false)
+const passwordError = ref('')
+
+async function saveAccount() {
+  profileError.value = ''
+  profileSuccess.value = false
+  if (!profile.value.username || profile.value.username.length < 3) {
+    profileError.value = '用户名至少 3 个字符'
+    return
+  }
+  if (!profile.value.email) {
+    profileError.value = '邮箱不能为空'
+    return
+  }
+  profileLoading.value = true
+  try {
+    const res = await authApi.updateProfile({
+      username: profile.value.username,
+      email: profile.value.email,
+      phone: profile.value.phone
+    })
+    if (res.code === 200) {
+      profileSuccess.value = true
+      authStore.setUser(res.data)
+      setTimeout(() => { profileSuccess.value = false }, 3000)
+    } else {
+      profileError.value = res.message || '保存失败'
+    }
+  } catch (e) {
+    profileError.value = e?.response?.data?.detail || '保存失败，请重试'
+  } finally {
+    profileLoading.value = false
+  }
+}
+
+async function handleChangePassword() {
+  passwordError.value = ''
+  if (!passwordForm.value.oldPassword) {
+    passwordError.value = '请输入当前密码'
+    return
+  }
+  if (passwordForm.value.newPassword.length < 8) {
+    passwordError.value = '新密码至少 8 位'
+    return
+  }
+  if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
+    passwordError.value = '两次输入的新密码不一致'
+    return
+  }
+  passwordLoading.value = true
+  try {
+    const res = await authApi.changePassword({
+      old_password: passwordForm.value.oldPassword,
+      new_password: passwordForm.value.newPassword
+    })
+    if (res.code === 200) {
+      showPasswordModal.value = false
+      passwordForm.value = { oldPassword: '', newPassword: '', confirmPassword: '' }
+      // 提示重新登录
+      window.dispatchEvent(new CustomEvent('force-logout', { detail: { message: res.message } }))
+    } else {
+      passwordError.value = res.message || '修改失败'
+    }
+  } catch (e) {
+    passwordError.value = e?.response?.data?.detail || '原密码错误'
+  } finally {
+    passwordLoading.value = false
+  }
 }
 
 function resetAccount() {
   profile.value = {
-    username: 'student_01',
-    role: '学生',
-    email: 'student@example.com',
-    phone: '138****8888'
+    username: authStore.user?.username || 'student_01',
+    role: authStore.user?.role || '学生',
+    email: authStore.user?.email || 'student@example.com',
+    phone: authStore.user?.phone || ''
   }
+  profileError.value = ''
+  profileSuccess.value = false
 }
 
 function saveNotifications() {
@@ -1153,5 +1283,149 @@ function resetPreferences() {
 .macos-sidebar::-webkit-scrollbar-thumb:hover,
 .macos-main::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.25);
+}
+
+/* 成功/错误提示 */
+.macos-panel {
+  position: relative;
+}
+
+.macos-panel .success-msg,
+.macos-panel .error-msg {
+  font-size: 12px;
+  margin-top: 10px;
+  padding: 6px 12px;
+  border-radius: 6px;
+}
+
+.macos-panel .success-msg {
+  background: rgba(52, 199, 89, 0.1);
+  color: #34c759;
+}
+
+.macos-panel .error-msg {
+  background: rgba(255, 59, 48, 0.1);
+  color: #ff3b30;
+}
+
+/* 弹窗样式 */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+.modal-content {
+  background: #fff;
+  border-radius: 14px;
+  width: 400px;
+  max-width: 90vw;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  animation: slideUp 0.25s ease;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.modal-header h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.modal-close {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #86868b;
+  transition: background 0.15s;
+}
+
+.modal-close:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #1d1d1f;
+}
+
+.modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal-field label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #86868b;
+}
+
+.modal-field input {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  font-size: 14px;
+  color: #1d1d1f;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.modal-field input:focus {
+  border-color: #007aff;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+}
+
+.modal-error {
+  font-size: 12px;
+  color: #ff3b30;
+  margin: 0;
+  padding: 6px 10px;
+  background: rgba(255, 59, 48, 0.08);
+  border-radius: 6px;
+}
+
+.modal-footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 14px 20px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(0, 0, 0, 0.01);
+}
+
+.modal-footer .macos-btn.primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 </style>
