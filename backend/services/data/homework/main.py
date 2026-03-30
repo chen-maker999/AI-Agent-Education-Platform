@@ -2,8 +2,10 @@
 
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Optional, List
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, String, Integer, DateTime, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -16,6 +18,50 @@ import hashlib
 import io
 
 router = APIRouter(prefix="/homework", tags=["Homework Storage"])
+
+# MinIO 不可用时写入 backend/local_storage/homework/<object_name>
+LOCAL_HOMEWORK_URL_PREFIX = "local://"
+
+
+def _backend_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def local_homework_root() -> Path:
+    p = _backend_root() / "local_storage" / "homework"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def save_homework_local(object_name: str, content: bytes) -> str:
+    safe = object_name.replace("\\", "/").strip("/")
+    path = local_homework_root() / safe
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    return f"{LOCAL_HOMEWORK_URL_PREFIX}{safe}"
+
+
+def read_homework_local(file_url: str) -> Optional[bytes]:
+    if not file_url.startswith(LOCAL_HOMEWORK_URL_PREFIX):
+        return None
+    rel = file_url[len(LOCAL_HOMEWORK_URL_PREFIX) :].lstrip("/")
+    path = local_homework_root() / rel
+    if not path.is_file():
+        return None
+    return path.read_bytes()
+
+
+def delete_homework_local_file(file_url: str) -> None:
+    if not file_url.startswith(LOCAL_HOMEWORK_URL_PREFIX):
+        return
+    rel = file_url[len(LOCAL_HOMEWORK_URL_PREFIX) :].lstrip("/")
+    path = local_homework_root() / rel
+    if path.is_file():
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
 
 # SQLAlchemy Model
 class Homework(Base):
@@ -106,25 +152,28 @@ async def upload_homework(
         content = await file.read()
         file_size = len(content)
         file_hash = hashlib.sha256(content).hexdigest()
+        mime_type = file.content_type or "application/octet-stream"
         
         # Generate unique object name
         object_name = f"{student_id}/{homework_id}/{file.filename}"
         
-        # Upload to MinIO
+        file_url: str
         client = get_minio_client()
         try:
+            if not client.bucket_exists(settings.MINIO_BUCKET_HOMEWORK):
+                client.make_bucket(settings.MINIO_BUCKET_HOMEWORK)
             client.put_object(
                 settings.MINIO_BUCKET_HOMEWORK,
                 object_name,
                 io.BytesIO(content),
                 length=file_size,
-                content_type=file.content_type
+                content_type=mime_type,
             )
-        except S3Error as e:
-            raise HTTPException(status_code=500, detail=f"MinIO upload failed: {e}")
-        
-        # Generate file URL
-        file_url = f"http://{settings.MINIO_ENDPOINT}/{settings.MINIO_BUCKET_HOMEWORK}/{object_name}"
+            file_url = f"http://{settings.MINIO_ENDPOINT}/{settings.MINIO_BUCKET_HOMEWORK}/{object_name}"
+        except Exception as e:
+            # MinIO 未启动或网络不可达时落盘，避免上传接口 500
+            file_url = save_homework_local(object_name, content)
+            print(f"MinIO upload skipped, using local storage: {e}")
         
         # Save metadata to PostgreSQL
         async with AsyncSessionLocal() as session:
@@ -135,7 +184,7 @@ async def upload_homework(
                 file_url=file_url,
                 file_hash=file_hash,
                 file_size=file_size,
-                mime_type=file.content_type,
+                mime_type=mime_type,
                 status="uploaded",
                 course=course,
                 note=note
@@ -152,12 +201,49 @@ async def upload_homework(
                 "file_url": file_url,
                 "file_hash": file_hash,
                 "file_size": file_size,
-                "mime_type": file.content_type,
+                "mime_type": mime_type,
                 "uploaded_at": datetime.utcnow().isoformat()
             }
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+
+@router.get("/{homework_id}/raw")
+async def download_homework_raw(homework_id: str):
+    """直接下载作业文件（本地存储时经后端读出；MinIO 时 302 到预签名 URL）。"""
+    from sqlalchemy import select
+    from datetime import timedelta
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Homework).where(Homework.homework_id == homework_id))
+        homework = result.scalar_one_or_none()
+
+    if not homework:
+        raise HTTPException(status_code=404, detail="Homework not found")
+
+    if homework.file_url.startswith(LOCAL_HOMEWORK_URL_PREFIX):
+        rel = homework.file_url[len(LOCAL_HOMEWORK_URL_PREFIX) :].lstrip("/")
+        path = local_homework_root() / rel
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="本地文件不存在")
+        return FileResponse(
+            path,
+            filename=homework.filename,
+            media_type=homework.mime_type or "application/octet-stream",
+        )
+
+    client = get_minio_client()
+    object_name = f"{homework.student_id}/{homework_id}/{homework.filename}"
+    try:
+        presigned_url = client.presigned_get_object(
+            settings.MINIO_BUCKET_HOMEWORK,
+            object_name,
+            expires=timedelta(seconds=3600),
+        )
+        return RedirectResponse(url=presigned_url)
+    except S3Error:
+        raise HTTPException(status_code=404, detail="无法从 MinIO 获取文件")
 
 
 @router.get("/{homework_id}/download", response_model=ResponseModel)
@@ -175,6 +261,16 @@ async def get_download_url(
         
         if not homework:
             raise HTTPException(status_code=404, detail="Homework not found")
+
+        if homework.file_url.startswith(LOCAL_HOMEWORK_URL_PREFIX):
+            return ResponseModel(
+                code=200,
+                message="获取下载链接成功",
+                data={
+                    "download_url": f"/api/v1/homework/{homework_id}/raw",
+                    "expires_at": datetime.utcnow().isoformat(),
+                },
+            )
         
         # Generate presigned URL from MinIO
         client = get_minio_client()
@@ -246,13 +342,16 @@ async def delete_homework(homework_id: str):
         if not homework:
             raise HTTPException(status_code=404, detail="Homework not found")
         
-        # Delete from MinIO
-        client = get_minio_client()
-        object_name = f"{homework.student_id}/{homework_id}/{homework.filename}"
-        try:
-            client.remove_object(settings.MINIO_BUCKET_HOMEWORK, object_name)
-        except S3Error:
-            pass  # Continue even if MinIO delete fails
+        # Delete from MinIO or local
+        if homework.file_url.startswith(LOCAL_HOMEWORK_URL_PREFIX):
+            delete_homework_local_file(homework.file_url)
+        else:
+            client = get_minio_client()
+            object_name = f"{homework.student_id}/{homework_id}/{homework.filename}"
+            try:
+                client.remove_object(settings.MINIO_BUCKET_HOMEWORK, object_name)
+            except S3Error:
+                pass
         
         # Delete from PostgreSQL
         await session.execute(

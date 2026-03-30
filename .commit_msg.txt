@@ -1,0 +1,10 @@
+feat: 完善账号与基础资料修改功能
+
+- 后端新增 PATCH /auth/me 接口，支持更新用户名/邮箱/手机号
+- 后端新增 PATCH /auth/password 接口，支持修改密码（原密码校验）
+- User 模型新增 phone 字段，自动 ALTER TABLE 兼容已有数据
+- UserResponse 模型同步新增 phone 字段
+- 前端 authApi 新增 updateProfile/changePassword 方法
+- Settings.vue 接入真实 API，页面加载时拉取用户信息
+- 新增密码修改弹窗（当前密码+新密码+确认密码）
+- auth store 新增 setUser 方法同步更新 Pinia 状态

@@ -1,0 +1,35 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../rabbitmq"
+		},
+		{
+			"path": "../redis"
+		},
+		{
+			"path": "../consul"
+		},
+		{
+			"path": "../Dminio-data"
+		},
+		{
+			"path": "../elastic"
+		},
+		{
+			"path": "../Erlang"
+		},
+		{
+			"path": "../kafka"
+		},
+		{
+			"path": "../Neo4j"
+		},
+		{
+			"path": "../postgre"
+		}
+	],
+	"settings": {}
+}

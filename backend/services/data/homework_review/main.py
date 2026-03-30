@@ -20,7 +20,7 @@ from common.database.postgresql import Base, AsyncSessionLocal
 from docx.oxml import OxmlElement
 from minio import Minio
 from minio.error import S3Error
-from services.data.homework.main import Homework as Homework
+from services.data.homework.main import Homework as Homework, read_homework_local
 
 router = APIRouter(prefix="/homework_review", tags=["Homework Review"])
 
@@ -158,9 +158,29 @@ def _mark_center_from_dict(mk: dict, index: int, total: int) -> tuple[float, flo
     return nx, ny
 
 
+def _norm_bbox01(mk: dict) -> Optional[tuple[float, float, float, float]]:
+    bb = mk.get("bbox") or mk.get("answer_bbox") or mk.get("box")
+    if not isinstance(bb, (list, tuple)) or len(bb) < 4:
+        return None
+    try:
+        x0, y0, x1, y1 = (float(bb[0]), float(bb[1]), float(bb[2]), float(bb[3]))
+    except (TypeError, ValueError):
+        return None
+    x0, y0, x1, y1 = _clamp01(x0), _clamp01(y0), _clamp01(x1), _clamp01(y1)
+    if x1 < x0:
+        x0, x1 = x1, x0
+    if y1 < y0:
+        y0, y1 = y1, y0
+    return x0, y0, x1, y1
+
+
 def draw_grade_marks_on_image(image_bytes: bytes, marks: List[dict]) -> bytes:
-    """Overlay red check / cross on homework image using Pillow (RGBA composite)."""
-    from PIL import Image, ImageDraw
+    """Overlay red check / cross on homework image using Pillow (RGBA composite).
+
+    错题：红叉 + 半透明描边红字批注，无实心白底；若有 bbox，批注放在手写框下方，减少遮挡。
+    """
+    from PIL import Image, ImageDraw, ImageFont
+    import textwrap
 
     im = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
     overlay = Image.new("RGBA", im.size, (0, 0, 0, 0))
@@ -169,24 +189,122 @@ def draw_grade_marks_on_image(image_bytes: bytes, marks: List[dict]) -> bytes:
     stroke = max(3, int(min(w, h) * 0.005))
     arm = max(14, int(min(w, h) * 0.032))
     red = (230, 30, 40, 255)
+    label_red = (215, 35, 45, 255)
+    # 深色描边保证浅底试卷上可读，且不盖死原笔迹
+    outline = (25, 25, 25, 200)
+
+    # 尝试加载中文字体
+    font_path = None
+    try:
+        import os
+        font_candidates = [
+            "C:/Windows/Fonts/msyh.ttc",
+            "C:/Windows/Fonts/simsun.ttc",
+            "C:/Windows/Fonts/arial.ttf",
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+            "/System/Library/Fonts/PingFang.ttc",
+        ]
+        for fp in font_candidates:
+            if os.path.exists(fp):
+                font_path = fp
+                break
+    except Exception:
+        pass
+
+    if font_path:
+        try:
+            font_size = max(12, int(min(w, h) * 0.019))
+            font = ImageFont.truetype(font_path, font_size)
+            small_font = ImageFont.truetype(font_path, max(11, int(font_size * 0.88)))
+        except Exception:
+            font = ImageFont.load_default()
+            small_font = ImageFont.load_default()
+            font_size = 12
+    else:
+        font = ImageFont.load_default()
+        small_font = ImageFont.load_default()
+        font_size = 12
+
+    sw_reason = max(1, min(3, font_size // 12))
+    sw_label = max(1, min(2, font_size // 14))
 
     n = max(len(marks), 1)
+    pad = max(3, int(min(w, h) * 0.006))
+
     for i, mk in enumerate(marks):
         correct = bool(mk.get("correct", True))
         nx, ny = _mark_center_from_dict(mk, i, n)
         cx = nx * w
         cy = ny * h
+        reason = mk.get("reason", "") or ""
 
         if correct:
+            green = (0, 180, 80, 255)
             p1 = (cx - arm * 0.85, cy)
             p2 = (cx - arm * 0.15, cy + arm * 0.55)
             p3 = (cx + arm * 0.9, cy - arm * 0.65)
-            draw.line([p1, p2], fill=red, width=stroke)
-            draw.line([p2, p3], fill=red, width=stroke)
+            draw.line([p1, p2], fill=green, width=stroke)
+            draw.line([p2, p3], fill=green, width=stroke)
         else:
             d = arm * 0.55
             draw.line([(cx - d, cy - d), (cx + d, cy + d)], fill=red, width=stroke)
             draw.line([(cx - d, cy + d), (cx + d, cy - d)], fill=red, width=stroke)
+
+            try:
+                _bb = small_font.getbbox("国")
+                _lh = _bb[3] - _bb[1]
+            except Exception:
+                _lh = int(min(w, h) * 0.024)
+            line_height = max(_lh + 2, int(min(w, h) * 0.022))
+
+            nb = _norm_bbox01(mk)
+            if reason and reason.strip():
+                reason_text = str(reason).strip()
+                if len(reason_text) > 56:
+                    reason_text = reason_text[:54] + "..."
+
+                lines = textwrap.wrap(reason_text, width=22)
+                if not lines:
+                    lines = [reason_text[:22]]
+
+                if nb:
+                    x0p, y0p, x1p, y1p = nb
+                    text_x = max(pad, x0p * w)
+                    line_y0 = min(h - line_height * len(lines[:3]) - pad, y1p * h + pad)
+                else:
+                    text_x = max(pad, cx - arm * 0.2)
+                    line_y0 = cy + arm * 1.15
+
+                for line_idx, line_text in enumerate(lines[:3]):
+                    line_y = line_y0 + line_idx * line_height
+                    if line_y >= h - pad - 2:
+                        break
+                    draw.text(
+                        (text_x, line_y),
+                        line_text,
+                        fill=label_red,
+                        font=small_font,
+                        stroke_width=sw_reason,
+                        stroke_fill=outline,
+                    )
+
+            qn = mk.get("question_number")
+            if qn is not None:
+                qn_text = f"第{int(qn)}题"
+                if nb:
+                    qn_x = max(pad, nb[0] * w)
+                    qn_y = max(pad, nb[1] * h - line_height - pad)
+                else:
+                    qn_x = max(pad, cx - arm * 1.2)
+                    qn_y = max(pad, cy - arm * 1.35 - line_height)
+                draw.text(
+                    (qn_x, qn_y),
+                    qn_text,
+                    fill=red,
+                    font=font,
+                    stroke_width=sw_label,
+                    stroke_fill=outline,
+                )
 
     out = Image.alpha_composite(im, overlay).convert("RGB")
     buf = io.BytesIO()
@@ -227,7 +345,7 @@ async def kimi_grade_homework_image(image_bytes: bytes, image_mime: str) -> dict
         '"student_answer":"<识别出的作答要点>",'
         '"bbox":[x0,y0,x1,y1],'
         '"nx":<0-1小数>,"ny":<0-1小数>,'
-        '"reason":"<简短理由>"}],'
+        '"reason":"<错误原因分析，答错时必须给出具体错误原因，如：计算错误、公式记错、步骤不完整、单位遗漏等；答对时填"">"}],'
         '"issues":[{"description":"...","severity":"error|warning|info",'
         '"location":"第X题","anchor_snippet":"","suggestion":"..."}]}\n'
         "bbox（强烈推荐）：该题「学生手写答案」在图中的轴对齐外接矩形，归一化坐标 "
@@ -235,6 +353,14 @@ async def kimi_grade_homework_image(image_bytes: bytes, image_mime: str) -> dict
         "必须紧贴手写笔迹范围，勿把整页或整道大题印刷区框进去。\n"
         "若无法可靠给出 bbox，则用 nx、ny 表示勾/叉中心点：答对时放在手写答案右侧空白、与答案行同高；"
         "答错时放在错误手写区域的几何中心。\n"
+        "【重要】reason 字段填写规则：\n"
+        "- 答错时必须给出简短精炼的错误原因（10-30字），例如：\n"
+        "  * \"计算错误：应为 3.14×5²=78.5\"\n"
+        "  * \"公式记错：应使用勾股定理 a²+b²=c²\"\n"
+        "  * \"步骤缺失：未写受力分析过程\"\n"
+        "  * \"单位错误：未标注 SI 国际单位\"\n"
+        "  * \"符号写反：负号遗漏导致符号错误\"\n"
+        "- 答对时 reason 字段留空字符串。\n"
         "禁止在试卷头部成绩汇总表、密封线、页眉页脚或与本题无关的空白处标注勾叉；"
         "不要为「总分」「得分」表格单元格单独画叉，除非那格内确有手写作答。\n"
         "issues 与错题对应；无问题时 issues 可为空数组。"
@@ -1556,18 +1682,20 @@ async def ai_grade_homework(homework_id: str):
     original_filename = homework_rec.filename
     file_url = homework_rec.file_url
 
-    # 2. 从 MinIO 下载原始文件
-    client = get_minio_client()
+    # 2. 从 MinIO 或本地落盘目录读取原始文件
     object_name = f"{student_id}/{homework_id}/{original_filename}"
     bucket_name = settings.MINIO_BUCKET_HOMEWORK
 
-    try:
-        response = client.get_object(bucket_name, object_name)
-        file_content = response.read()
-        response.close()
-        response.release_conn()
-    except S3Error:
-        raise HTTPException(status_code=404, detail="文件不存在于 MinIO，请确认上传成功")
+    file_content = read_homework_local(file_url)
+    if file_content is None:
+        client = get_minio_client()
+        try:
+            response = client.get_object(bucket_name, object_name)
+            file_content = response.read()
+            response.close()
+            response.release_conn()
+        except S3Error:
+            raise HTTPException(status_code=404, detail="文件不存在于 MinIO 或本地，请确认上传成功")
 
     # 2b. 图片作业：视觉批改 + Pillow 叠加红勾/红叉
     img_mime = detect_homework_image_mime(homework_rec.mime_type, original_filename)
