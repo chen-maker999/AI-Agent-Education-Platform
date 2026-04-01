@@ -111,6 +111,10 @@ export const useAuthStore = defineStore('auth', () => {
     showAuthModal.value = false
   }
 
+  function setUser(userData) {
+    user.value = userData
+  }
+
   if (token.value) {
     fetchUserInfo()
   }
@@ -128,6 +132,7 @@ export const useAuthStore = defineStore('auth', () => {
     fetchUserInfo,
     refreshAccessToken,
     openAuthModal,
-    closeAuthModal
+    closeAuthModal,
+    setUser
   }
 })

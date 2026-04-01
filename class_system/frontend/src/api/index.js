@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const api = axios.create({
   baseURL: '/api/v1',
-  timeout: 30000
+  timeout: 300000  // 300秒超时，支持文件上传和大图片AI处理
 })
 
 api.interceptors.request.use(config => {
@@ -55,7 +55,9 @@ export const authApi = {
   register: (data) => api.post('/auth/register', data),
   logout: () => api.post('/auth/logout'),
   refresh: (data) => api.post('/auth/refresh', data),
-  me: () => api.get('/auth/me')
+  me: () => api.get('/auth/me'),
+  updateProfile: (data) => api.patch('/auth/me', data),
+  changePassword: (data) => api.patch('/auth/password', data)
 }
 
 export const rolesApi = {
@@ -85,7 +87,8 @@ export const homeworkApi = {
   list: (params) => api.get('/homework/', { params }),
   presigned: (id) => api.get(`/homework/${id}/presigned`),
   statistics: () => api.get('/homework/statistics/summary'),
-  updateStatus: (id, status) => api.patch(`/homework/${id}/status`, { status })
+  updateStatus: (id, status) =>
+    api.patch(`/homework/${id}/status`, null, { params: { status } })
 }
 
 export const portraitApi = {
@@ -161,20 +164,30 @@ export const ragApi = {
     tools: data.tools || null
   }),
 
-  // 流式对话
+    // 流式对话
   chatStream: (data) => {
     const token = localStorage.getItem('token')
+
+    // kimi-k2.5 只接受固定的 top_p=0.95（强制 0.95，非 0.9）
+    const effectiveTopP = (data.model === 'kimi-k2.5' || data.model === undefined)
+      ? 0.95
+      : (data.topP !== undefined ? data.topP : 0.9)
+
     const payload = {
       message: data.query || data.message || '',
       student_id: data.student_id || 'guest',
       session_id: data.session_id || `chat_${data.mode || 'general'}`,
       mode: data.mode || 'general',
-      context: data.context || {}
+      context: data.context || {},
+      model: data.model || 'kimi-k2.5',
+      temperature: data.temperature !== undefined ? data.temperature : 0.7,
+      top_p: effectiveTopP,
+      max_tokens: data.maxTokens || 4096,
+      frequency_penalty: data.frequencyPenalty !== undefined ? data.frequencyPenalty : 0,
+      presence_penalty: data.presencePenalty !== undefined ? data.presencePenalty : 0,
+      tools: data.tools || null
     }
-    
-    // Debug log
-    console.log('chatStream request:', payload)
-    
+
     return fetch('/api/v1/chat/message/stream', {
       method: 'POST',
       headers: {
@@ -186,8 +199,14 @@ export const ragApi = {
   },
 
   health: () => api.get('/knowledge/rag/health'),
-  history: (sessionId) => api.get(`/knowledge/rag/history/${sessionId}`),
-  clearHistory: (sessionId) => api.delete(`/knowledge/rag/history/${sessionId}`),
+  // 获取学生所有会话历史列表
+  history: (studentId, page = 1, pageSize = 20) => api.get(`/knowledge/rag/history/${studentId}`, {
+    params: { page, page_size: pageSize }
+  }),
+  // 获取指定会话的完整历史记录
+  getSessionHistory: (sessionId) => api.get(`/knowledge/rag/history/session/${sessionId}`),
+  // 清除指定会话的历史记录
+  clearHistory: (sessionId) => api.delete(`/knowledge/rag/history/session/${sessionId}`),
 
   // RAG知识库对话 - 用于知识库检索
   ragChat: (data) => api.post('/knowledge/rag/chat', {
@@ -238,6 +257,78 @@ export const configApi = {
   get: (key) => api.get(`/config/${key}`),
   set: (key, value) => api.put(`/config/${key}`, { value }),
   list: () => api.get('/config')
+}
+
+export const homeworkGenApi = {
+  // 生成作业
+  generate: (data) => api.post('/homework-gen/generate', data),
+  // 下载作业 PDF
+  download: (homeworkId) => api.get(`/homework-gen/download/${homeworkId}`),
+  // 获取作业列表
+  list: (params) => api.get('/homework-gen/list', { params }),
+  // 获取作业详情
+  detail: (homeworkId) => api.get(`/homework-gen/detail/${homeworkId}`),
+  // 获取可选课程列表
+  courses: () => api.get('/homework-gen/courses'),
+  // 删除作业
+  delete: (homeworkId) => api.delete(`/homework-gen/${homeworkId}`)
+}
+
+export const reviewApi = {
+  // Kimi AI 智能批改（GET，返回批改结果）
+  grade: (homeworkId) => api.get(`/homework_review/ai-grade/${homeworkId}`),
+  // 获取批改详情
+  get: (reviewId) => api.get(`/homework_review/${reviewId}`),
+  // 下载批改后文件
+  download: (reviewId) => api.get(`/homework_review/${reviewId}/download`),
+  // 列出批改记录
+  list: (params) => api.get('/homework_review/list', { params }),
+  // 删除批改记录
+  delete: (reviewId) => api.delete(`/homework_review/${reviewId}`),
+  // 轮询批改状态（支持 SSE 流式进度）
+  gradeStream: (homeworkId) => {
+    const token = localStorage.getItem('token')
+    return fetch(`/api/v1/homework_review/ai-grade/${homeworkId}`, {
+      method: 'GET',
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    })
+  }
+}
+
+// Agent 智能体 API
+export const agentApi = {
+  // 获取智能体列表
+  list: () => api.get('/agent'),
+  // 获取单个智能体
+  get: (agentId) => api.get(`/agent/${agentId}`),
+  // 创建智能体
+  create: (data) => api.post('/agent', data),
+  // 更新智能体
+  update: (agentId, data) => api.put(`/agent/${agentId}`, data),
+  // 删除智能体
+  delete: (agentId) => api.delete(`/agent/${agentId}`),
+  // 与智能体对话（支持 Function Calling）
+  chat: (data) => api.post('/agent/chat', {
+    agent_id: data.agent_id,
+    message: data.message,
+    student_id: data.student_id || 'guest',
+    session_id: data.session_id,
+    files: data.files || null  // 支持多模态：[{type, data}]
+  }),
+  // 获取内置工具列表
+  listTools: () => api.get('/agent/tools/list'),
+  // 上传文件到 Agent 工作区
+  uploadFile: (sessionId, file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post(`/agent/tools/upload/${sessionId}`, formData, {
+      headers: { 'Content-Type': undefined } // 让浏览器自动设置，包括 boundary
+    })
+  },
+  // 列出会话已上传的文件
+  listFiles: (sessionId) => api.get(`/agent/tools/files/${sessionId}`)
 }
 
 export default api

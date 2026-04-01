@@ -24,6 +24,7 @@ from services.base.scheduler.main import router as scheduler_router
 from services.base.cache.main import router as cache_router
 from services.data.collect.main import router as collect_router
 from services.data.homework.main import router as homework_router
+from services.data.homework_review.main import router as homework_review_router
 from services.data.portrait.main import router as portrait_router
 from services.data.timeseries.main import router as timeseries_router
 from services.data.feedback.main import router as feedback_router
@@ -52,6 +53,7 @@ from services.intelligence.evaluate.main import router as evaluate_router
 from services.intelligence.parse.main import router as parse_router
 from services.intelligence.exercise.main import router as exercise_router
 from services.intelligence.worksheet.main import router as worksheet_router
+from services.intelligence.homework_gen.main import router as homework_gen_router
 from services.intelligence.warning.main import router as warning_router
 from services.adapt.gateway.main import router as gateway_router
 from services.adapt.sync.main import router as sync_router
@@ -72,6 +74,7 @@ from services.knowledge.chunk.semantic_chunking import router as semantic_chunk_
 from services.knowledge.graphrag.main import router as graphrag_router
 from services.knowledge.trr.main import router as trr_router
 from services.knowledge.evaluation.ragas_evaluation import router as ragas_router
+from services.knowledge.health import router as health_router
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -136,6 +139,30 @@ async def startup_event():
             status VARCHAR(50) DEFAULT 'pending',
             course VARCHAR(100),
             note TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        # 作业批改记录表
+        """CREATE TABLE IF NOT EXISTS homework_reviews (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            review_id VARCHAR(255) UNIQUE NOT NULL,
+            homework_id VARCHAR(255) NOT NULL,
+            student_id VARCHAR(255) NOT NULL,
+            original_filename VARCHAR(500),
+            graded_filename VARCHAR(500),
+            graded_file_url TEXT,
+            file_size INTEGER,
+            score FLOAT,
+            total_score FLOAT DEFAULT 100,
+            grading_status VARCHAR(50) DEFAULT 'pending',
+            course VARCHAR(100),
+            issue_count INTEGER DEFAULT 0,
+            issues_json TEXT,
+            code_issues JSONB DEFAULT '[]',
+            original_content TEXT,
+            grading_model VARCHAR(100) DEFAULT 'rule-based',
+            grading_time TIMESTAMP,
+            review_details JSONB DEFAULT '{}',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""",
@@ -391,6 +418,7 @@ app.include_router(scheduler_router, prefix=settings.API_PREFIX)
 app.include_router(cache_router, prefix=settings.API_PREFIX)
 app.include_router(collect_router, prefix=settings.API_PREFIX)
 app.include_router(homework_router, prefix=settings.API_PREFIX)
+app.include_router(homework_review_router, prefix=settings.API_PREFIX)
 app.include_router(portrait_router, prefix=settings.API_PREFIX)
 app.include_router(timeseries_router, prefix=settings.API_PREFIX)
 app.include_router(feedback_router, prefix=settings.API_PREFIX)
@@ -418,6 +446,7 @@ app.include_router(evaluate_router, prefix=settings.API_PREFIX)
 app.include_router(parse_router, prefix=settings.API_PREFIX)
 app.include_router(exercise_router, prefix=settings.API_PREFIX)
 app.include_router(worksheet_router, prefix=settings.API_PREFIX)
+app.include_router(homework_gen_router, prefix=settings.API_PREFIX)
 app.include_router(warning_router, prefix=settings.API_PREFIX)
 app.include_router(gateway_router, prefix=settings.API_PREFIX)
 app.include_router(sync_router, prefix=settings.API_PREFIX)
@@ -438,6 +467,7 @@ app.include_router(semantic_chunk_router, prefix=settings.API_PREFIX)
 app.include_router(graphrag_router, prefix=settings.API_PREFIX)
 app.include_router(trr_router, prefix=settings.API_PREFIX)
 app.include_router(ragas_router, prefix=settings.API_PREFIX)
+app.include_router(health_router, prefix=settings.API_PREFIX)
 
 
 if __name__ == "__main__":

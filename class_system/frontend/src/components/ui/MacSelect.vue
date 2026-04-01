@@ -24,7 +24,8 @@
           :class="{ 'is-selected': opt.value === modelValue }"
           @click="choose(opt)"
         >
-          {{ opt.label }}
+          <span class="mac-select__option-label">{{ opt.label }}</span>
+          <span v-if="opt.desc" class="mac-select__option-desc">{{ opt.desc }}</span>
         </li>
       </ul>
     </transition>
@@ -159,7 +160,7 @@ onUnmounted(() => {
   box-shadow:
     0 4px 24px rgba(0, 0, 0, 0.08),
     0 0 0 1px rgba(0, 0, 0, 0.04);
-  max-height: 240px;
+  max-height: 360px;
   overflow-y: auto;
 }
 
@@ -172,9 +173,26 @@ onUnmounted(() => {
   transition: background 0.15s ease, color 0.15s ease;
 }
 
+.mac-select__option-label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.mac-select__option-desc {
+  display: block;
+  font-size: 11px;
+  color: #86868b;
+  line-height: 1.4;
+}
+
 .mac-select__option:hover {
   background: #007aff;
   color: #fff;
+}
+
+.mac-select__option:hover .mac-select__option-desc {
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .mac-select__option.is-selected {

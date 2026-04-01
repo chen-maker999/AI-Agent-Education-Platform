@@ -51,16 +51,26 @@ export function summarizeGraphs(graphs = [], nodes = [], edges = []) {
 }
 
 export function summarizeHomework(items = []) {
-  return toList(items).map((item, index) => ({
-    id: item.homework_id || item.id || `hw_${index}`,
-    filename: item.filename || item.name || `作业_${index + 1}.pdf`,
-    uploader: item.uploader || item.user_name || item.student_name || '未知用户',
-    course: item.course || item.course_name || '未分类课程',
-    uploadTime: item.upload_time || item.created_at || '刚刚',
-    status: item.status || 'pending',
-    score: item.score ?? null,
-    aiCommentCount: item.ai_comment_count ?? 0
-  }))
+  return toList(items).map((item, index) => {
+    const raw = item.status || 'pending'
+    const uiStatus = raw === 'reviewed' ? 'reviewed' : 'pending'
+    return {
+      id: item.homework_id || item.id || `hw_${index}`,
+      filename: item.filename || item.title || item.name || `作业_${index + 1}.pdf`,
+      mimeType: item.mime_type || item.mimeType || '',
+      uploader: item.student_id || item.uploader || item.user_name || item.student_name || item.created_by || '未知用户',
+      course: item.course || item.course_name || '未分类课程',
+      uploadTime: item.upload_time || item.created_at || '刚刚',
+      status: uiStatus,
+      score: item.score ?? null,
+      aiCommentCount: item.ai_comment_count ?? 0,
+      // AI 生成作业的字段
+      isGenerated: item.isGenerated || false,
+      hasReview: item.hasReview || item.ai_comment_count > 0 || false,
+      generatedFileUrl: item.generatedFileUrl || item.file_url || null,
+      generatedHomeworkId: item.generatedHomeworkId || item.homework_id || null
+    }
+  })
 }
 
 export function summarizeEvaluation(summary = {}, history = []) {

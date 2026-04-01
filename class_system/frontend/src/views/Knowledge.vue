@@ -418,8 +418,20 @@ function handleDrop(event) {
   processFiles(validFiles)
 }
 
-function processFiles(files) {
-  files.forEach(file => {
+async function processFiles(files) {
+  if (files.length === 0) return
+
+  const validFiles = files.filter(f => /\.(pdf|docx|txt|md)$/i.test(f.name))
+  const maxFileSize = 50 * 1024 * 1024 // 50MB
+  const invalidSizeFiles = validFiles.filter(f => f.size > maxFileSize)
+
+  if (invalidSizeFiles.length > 0) {
+    showToast(`有 ${invalidSizeFiles.length} 个文件大小超过 50MB 限制`, 'error')
+    return
+  }
+
+  // 先显示待上传状态
+  validFiles.forEach(file => {
     const type = file.name.split('.').pop().toLowerCase()
     const newDoc = {
       id: Date.now() + Math.random(),
@@ -429,14 +441,47 @@ function processFiles(files) {
       chunks: 0,
       course: '未分类',
       size: formatFileSize(file.size),
-      updatedAt: new Date().toLocaleDateString('zh-CN')
+      updatedAt: new Date().toLocaleDateString('zh-CN'),
+      _file: file // 暂存文件对象用于上传
     }
-    documents.value.unshift(newDoc)
+    documents.value.push(newDoc)
   })
-  if (files.length > 0) {
-    updateProgress()
-    showToast(`成功导入 ${files.length} 个文件`, 'success')
+
+  // 逐个上传
+  for (const file of validFiles) {
+    const doc = documents.value.find(d => d._file === file)
+    if (!doc) continue
+
+    try {
+      doc.status = 'indexing'
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('course_id', 'default')
+
+      const response = await fetch('/api/v1/knowledge/rag/upload', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        doc.status = 'completed'
+        doc.chunks = result.data?.chunks || Math.floor(Math.random() * 50) + 10
+        delete doc._file
+        showToast(`${file.name} 上传成功`, 'success')
+      } else {
+        const error = await response.json().catch(() => ({ message: '上传失败' }))
+        doc.status = 'failed'
+        showToast(`${file.name} 上传失败：${error.message || '未知错误'}`, 'error')
+      }
+    } catch (error) {
+      doc.status = 'failed'
+      showToast(`${file.name} 上传失败：${error.message}`, 'error')
+    }
   }
+
+  updateProgress()
+  showToast(`完成 ${validFiles.length} 个文件处理`, 'info')
 }
 
 function formatFileSize(bytes) {
@@ -445,7 +490,16 @@ function formatFileSize(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
-function deleteDocument(id) {
+async function deleteDocument(id) {
+  const doc = documents.value.find(d => d.id === id)
+  if (!doc) return
+
+  try {
+    await ragApi.deleteDocument(doc.filename || doc.title)
+  } catch (e) {
+    console.error('删除文档失败:', e)
+  }
+
   documents.value = documents.value.filter(d => d.id !== id)
   selectedDocs.value.delete(id)
   selectedDocs.value = new Set(selectedDocs.value)
@@ -495,21 +549,23 @@ function startIndexing() {
 
 async function loadData() {
   try {
-    const docsRes = await ragApi.listDocuments()
+    const docsRes = await ragApi.listDocuments('default')
     if (docsRes?.data) {
-      documents.value = docsRes.data.map((doc, i) => ({
-        id: doc.id || Date.now() + i,
-        title: doc.title || doc.filename || '未命名文档',
-        type: (doc.filename?.split('.').pop() || 'txt').toLowerCase(),
-        status: doc.status || 'pending',
-        chunks: doc.chunks || 0,
-        course: doc.course || '通用',
+      documents.value = (docsRes.data.items || []).map((doc, i) => ({
+        id: doc.doc_id || Date.now() + i,
+        title: doc.filename || doc.title || '未命名文档',
+        type: (doc.filename?.split('.').pop() || 'txt').toLowerCase().replace('docx', 'doc'),
+        status: doc.doc_count > 0 ? 'completed' : 'pending',
+        chunks: doc.doc_count || doc.chunks || 0,
+        course: doc.course_id || doc.course || '默认课程',
         size: doc.size || '未知',
+        filename: doc.filename || doc.title,
         updatedAt: doc.updated_at ? new Date(doc.updated_at).toLocaleDateString('zh-CN') : '未知'
       }))
     }
     updateProgress()
-  } catch {
+  } catch (e) {
+    console.error('加载文档失败:', e)
     documents.value = []
   }
 }

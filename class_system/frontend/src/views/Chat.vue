@@ -147,7 +147,7 @@
                     <span>{{ msg.time }}</span>
                   </div>
                   <p class="chat-content">
-                    <span class="chat-text" :class="{ 'text-reveal': streamingIndex === index }">{{ msg.content }}</span>
+                    <span class="chat-text" :class="{ 'text-reveal': streamingIndex === index }" v-html="renderContent(msg.content || '')"></span>
                     <span v-if="streamingIndex === index" class="typing-cursor"></span>
                   </p>
                 </div>
@@ -163,6 +163,20 @@
           <!-- Composer -->
           <div class="composer-wrap">
             <div class="composer-glow" aria-hidden="true"></div>
+            <!-- 附件列表 - 显示在 composer-box 上方 -->
+            <div v-if="uploadedFiles.length > 0" class="attachments-bar">
+              <div v-for="(file, idx) in uploadedFiles" :key="idx" class="attachment-chip">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                  <path d="M13.5 7.5L7.5 13.5a4 4 0 01-5.657-5.657l5.657-5.657a2.5 2.5 0 013.536 3.536L5.379 11.47a1 1 0 01-1.414-1.414L9 5" stroke="currentColor" stroke-width="1.4"/>
+                </svg>
+                <span>{{ file.name }}</span>
+                <button class="attachment-remove" @click="removeFile(idx)">
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
             <div class="composer-box">
               <textarea
                 ref="inputRef"
@@ -202,9 +216,21 @@
                   </div>
                 </div>
                 <div class="composer-right">
-                  <button class="tool-btn" title="附件">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <!-- 隐藏的文件输入框 -->
+                  <input
+                    ref="fileInputRef"
+                    type="file"
+                    class="file-input-hidden"
+                    :accept="acceptFileTypes"
+                    multiple
+                    @change="handleFileSelect"
+                  />
+                  <button class="tool-btn" :class="{ active: isUploading }" title="上传附件" @click="triggerFileSelect">
+                    <svg v-if="!isUploading" width="16" height="16" viewBox="0 0 16 16" fill="none">
                       <path d="M13.5 7.5L7.5 13.5a4 4 0 01-5.657-5.657l5.657-5.657a2.5 2.5 0 013.536 3.536L5.379 11.47a1 1 0 01-1.414-1.414L9 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <svg v-else class="spin" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2" stroke-dasharray="30" stroke-dashoffset="10"/>
                     </svg>
                   </button>
                   <button class="send-btn" :disabled="!inputMessage.trim() || isLoading" @click="sendMessage">
@@ -224,7 +250,7 @@
 
 <script setup>
 import { computed, nextTick, ref, onMounted } from 'vue'
-import { ragApi } from '@/api'
+import { ragApi, agentApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import InfoState from '@/components/ui/InfoState.vue'
 
@@ -239,6 +265,29 @@ onMounted(() => {
     }, 100)
   })
 })
+
+// 加载保存的配置
+function loadAgentConfig() {
+  try {
+    const saved = localStorage.getItem('agent-config-full')
+    if (saved) {
+      return JSON.parse(saved)
+    }
+  } catch (e) {
+    console.error('Failed to load agent config:', e)
+  }
+  // 返回默认配置
+  return {
+    model: 'kimi-k2.5',
+    temperature: 70,
+    topP: 90,
+    maxTokens: 4096,
+    frequencyPenalty: 0,
+    presencePenalty: 0,
+    tools: []
+  }
+}
+
 const userInitial = computed(() => (authStore.user?.username || 'U').charAt(0).toUpperCase())
 
 const modeOptions = [
@@ -248,6 +297,8 @@ const modeOptions = [
 ]
 
 const selectedMode = ref('general')
+const selectedAgentId = ref('')
+const agentList = ref([])
 const inputMessage = ref('')
 const isLoading = ref(false)
 const hasStarted = ref(false)
@@ -265,9 +316,198 @@ const lastQuestion = ref('')
 const showPreviewCard = ref(false)
 const streamingIndex = ref(-1) // 正在流式输出的消息索引
 
-function selectMode(value, index) {
+// 文件上传相关
+const fileInputRef = ref(null)
+const uploadedFiles = ref([]) // { name, path, size }
+const isUploading = ref(false)
+const currentSessionId = ref('')
+const acceptFileTypes = '.txt,.pdf,.doc,.docx,.md,.py,.js,.ts,.html,.css,.json,.xml,.csv,.xlsx,.jpg,.jpeg,.png,.gif,.bmp,.webp'
+
+function triggerFileSelect() {
+  fileInputRef.value?.click()
+}
+
+async function handleFileSelect(event) {
+  const files = event.target.files
+  if (!files || files.length === 0) return
+
+  // 生成或复用 session_id
+  if (!currentSessionId.value) {
+    currentSessionId.value = `chat_${Date.now()}`
+  }
+
+  isUploading.value = true
+  try {
+    for (const file of files) {
+      // 限制文件大小（10MB）
+      if (file.size > 10 * 1024 * 1024) {
+        alert(`文件 ${file.name} 超过10MB限制`)
+        continue
+      }
+
+      const res = await agentApi.uploadFile(currentSessionId.value, file)
+      if (res.code === 200) {
+        uploadedFiles.value.push({
+          name: file.name,
+          path: res.data.path,
+          size: file.size,
+          rawFile: file  // 保存原始文件用于读取为 base64
+        })
+      } else {
+        console.error('文件上传失败:', res.message)
+        alert(`文件 ${file.name} 上传失败`)
+      }
+    }
+  } catch (e) {
+    console.error('文件上传错误:', e)
+    alert('文件上传出错，请重试')
+  } finally {
+    isUploading.value = false
+    // 清空文件选择
+    if (fileInputRef.value) {
+      fileInputRef.value.value = ''
+    }
+  }
+}
+
+function removeFile(index) {
+  uploadedFiles.value.splice(index, 1)
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+// 读取文件为 base64
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      // 去掉 data:image/xxx;base64, 前缀
+      const base64 = reader.result.split(',')[1]
+      resolve(base64)
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+// 获取文件的 MIME 类型
+// 渲染消息内容：支持 LaTeX 公式 + Markdown
+import katex from 'katex'
+function renderContent(text) {
+  if (!text) return ''
+  // 1. 处理 $$...$$ 块级公式（优先提取，防止被后续 Markdown 处理破坏）
+  let result = text
+  const blockMathRegex = /\$\$([\s\S]+?)\$\$/g
+  const blockMatches = []
+  let m
+  while ((m = blockMathRegex.exec(text)) !== null) {
+    blockMatches.push({ raw: m[0], latex: m[1], index: m.index })
+  }
+  // 用占位符替换所有块公式
+  for (let i = blockMatches.length - 1; i >= 0; i--) {
+    const match = blockMatches[i]
+    try {
+      const html = katex.renderToString(match.latex.trim(), { displayMode: true, throwOnError: false })
+      result = result.slice(0, match.index) + `\x00BLOCK_MATH_${i}\x00` + result.slice(match.index + match.raw.length)
+    } catch (e) {
+      result = result.slice(0, match.index) + match.raw + result.slice(match.index + match.raw.length)
+    }
+  }
+  // 2. HTML 转义（防止 XSS）
+  result = result.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  // 3. Markdown 处理
+  result = result
+    // 代码块 ```...```
+    .replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
+      `<pre class="code-block"><code>${code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`)
+    // 行内代码
+    .replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
+    // 标题
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    // 列表
+    .replace(/^[-*] (.+)$/gm, '<li>$1</li>')
+    // 加粗
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // 斜体
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // 行级公式 $...$（行内）
+    .replace(/\$([^$\n]+?)\$/g, (_, latex) => {
+      try {
+        return katex.renderToString(latex.trim(), { displayMode: false, throwOnError: false })
+      } catch (e) {
+        return '$' + latex + '$'
+      }
+    })
+    // 换行
+    .replace(/\n/g, '<br>')
+  // 4. 恢复块公式
+  for (let i = 0; i < blockMatches.length; i++) {
+    try {
+      const html = katex.renderToString(blockMatches[i].latex.trim(), { displayMode: true, throwOnError: false })
+      result = result.replace(`\x00BLOCK_MATH_${i}\x00`, html)
+    } catch (e) {
+      result = result.replace(`\x00BLOCK_MATH_${i}\x00`, '$$' + blockMatches[i].latex + '$$')
+    }
+  }
+  // 5. 合并连续 <li> 为 <ul>
+  result = result.replace(/(<li>.*<\/li>(\s*<li>.*<\/li>)*)/g, match => '<ul>' + match + '</ul>')
+  return result
+}
+
+function getFileMimeType(filename) {
+  const ext = filename.split('.').pop().toLowerCase()
+  const mimeTypes = {
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'gif': 'image/gif',
+    'webp': 'image/webp',
+    'bmp': 'image/bmp',
+    'pdf': 'application/pdf',
+    'doc': 'application/msword',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'txt': 'text/plain',
+    'md': 'text/markdown',
+    'py': 'text/x-python',
+    'js': 'text/javascript',
+    'ts': 'text/typescript',
+    'html': 'text/html',
+    'css': 'text/css',
+    'json': 'application/json',
+    'xml': 'application/xml',
+    'csv': 'text/csv',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  }
+  return mimeTypes[ext] || 'application/octet-stream'
+}
+
+async function selectMode(value, index) {
   selectedMode.value = value
   nextTick(() => updateThumb(index))
+
+  // 切换到智能体模式时，自动加载并选择智能体
+  if (value === 'agent') {
+    try {
+      const res = await agentApi.list()
+      if (res.code === 200 && res.data.agents?.length > 0) {
+        selectedAgentId.value = res.data.agents[0].id
+        agentList.value = res.data.agents
+      } else {
+        selectedAgentId.value = ''
+        agentList.value = []
+      }
+    } catch (e) {
+      console.error('加载智能体列表失败:', e)
+      selectedAgentId.value = ''
+      agentList.value = []
+    }
+  }
 }
 
 function updateThumb(index) {
@@ -314,6 +554,9 @@ function createNewChat() {
   activeSources.value = [
     { title: '引用来源将在这里显示', summary: '命中文档、知识块和建议动作会伴随回答一起出现。' }
   ]
+  // 清空上传的文件
+  uploadedFiles.value = []
+  currentSessionId.value = ''
   // 清空输入框
   inputMessage.value = ''
   if (inputRef.value) {
@@ -328,6 +571,35 @@ async function sendMessage() {
   if (!text || isLoading.value) return
 
   if (!hasStarted.value) hasStarted.value = true
+
+  // 加载保存的配置
+  const agentConfig = loadAgentConfig()
+
+  // 构建消息内容，如果有附件则转换为多模态格式
+  let fullMessage = text
+  let filesData = null
+  
+  if (uploadedFiles.value.length > 0) {
+    // 将上传的文件转换为 base64 格式
+    filesData = []
+    for (const file of uploadedFiles.value) {
+      try {
+        const fileData = await readFileAsBase64(file.rawFile)
+        filesData.push({
+          type: getFileMimeType(file.name),
+          data: fileData
+        })
+      } catch (e) {
+        console.error('读取文件失败:', e)
+      }
+    }
+    
+    // 清空上传的文件（附件只使用一次）
+    uploadedFiles.value = []
+  }
+  
+  // 额外提示（不再需要让AI读取文件）
+  const fileHint = filesData ? `\n\n【用户上传了 ${filesData.length} 个文件，请阅读后回答。】` : ''
 
   messages.value.push({ role: 'user', content: text, time: formatTime() })
   lastQuestion.value = text
@@ -353,11 +625,57 @@ async function sendMessage() {
   messages.value.push({ role: 'ai', content: '', time: formatTime() })
 
   try {
+    // 智能体模式
+    if (selectedMode.value === 'agent') {
+      if (!selectedAgentId.value) {
+        messages.value[aiMsgIndex].content = '请先选择一个智能体'
+        isLoading.value = false
+        streamingIndex.value = -1
+        return
+      }
+
+      const res = await agentApi.chat({
+        agent_id: selectedAgentId.value,
+        message: fullMessage + (fileHint || ''),
+        student_id: authStore.user?.id || 'guest',
+        session_id: `agent_${selectedAgentId.value}_${Date.now()}`,
+        files: filesData
+      })
+
+      if (res.code === 200) {
+        const responseText = res.data.response || '智能体没有返回内容'
+        messages.value[aiMsgIndex].content = responseText
+
+        // 如果有工具调用日志，显示工具执行情况
+        if (res.data.tool_calls_log?.length) {
+          const toolInfo = res.data.tool_calls_log.map(t =>
+            `• ${t.tool}: ${t.result?.error || '成功'}`
+          ).join('\n')
+          messages.value[aiMsgIndex].content += `\n\n【工具调用】\n${toolInfo}`
+        }
+      } else {
+        messages.value[aiMsgIndex].content = res.message || '智能体响应失败'
+      }
+
+      isLoading.value = false
+      streamingIndex.value = -1
+      return
+    }
+
+    // 普通模式（通用问答 / 知识库对话）
+    // agentConfig 的滑块值是 0-100，API 需要 0-1 float 及 snake_case 命名
     const response = await ragApi.chatStream({
       query: text,
       student_id: authStore.user?.id || 'guest',
       session_id: `chat_${selectedMode.value}`,
-      mode: selectedMode.value === 'general' ? 'general' : 'learning'
+      mode: selectedMode.value === 'general' ? 'general' : 'learning',
+      model: agentConfig.model,
+      temperature: agentConfig.temperature / 100,
+      topP: agentConfig.topP / 100,
+      maxTokens: agentConfig.maxTokens,
+      frequencyPenalty: agentConfig.frequencyPenalty,
+      presencePenalty: agentConfig.presencePenalty,
+      tools: agentConfig.tools
     })
 
     // 检查响应状态
@@ -1075,6 +1393,91 @@ async function sendMessage() {
 .composer-left  { display: flex; align-items: center; gap: 8px; }
 .composer-right { display: flex; align-items: center; gap: 6px; }
 
+/* 文件上传 */
+.file-input-hidden {
+  display: none;
+}
+
+/* 附件列表 - 显示在 composer-box 上方 */
+.attachments-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  background: rgba(37,99,235,0.04);
+  border: 1px dashed rgba(37,99,235,0.2);
+  border-radius: 10px;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px 4px 10px;
+  background: rgba(37,99,235,0.08);
+  border: 1px solid rgba(37,99,235,0.2);
+  border-radius: 16px;
+  font-size: 11px;
+  color: #2563eb;
+  max-width: 180px;
+}
+
+.attachment-chip svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.attachment-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+.attachment-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s;
+  opacity: 0.6;
+}
+
+.attachment-remove:hover {
+  background: rgba(37,99,235,0.15);
+  opacity: 1;
+}
+
+/* 上传中状态 */
+.tool-btn.active {
+  border-color: rgba(37,99,235,0.35);
+  background: rgba(37,99,235,0.1);
+  animation: pulse-upload 1s ease-in-out infinite;
+}
+
+@keyframes pulse-upload {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* Mode slider */
 .mode-slider { display: flex; align-items: center; }
 .mode-slider__track {
@@ -1342,5 +1745,53 @@ async function sendMessage() {
 }
 :global([data-theme="dark"]) .chat-message.streaming .chat-text:not(:empty) {
   text-shadow: 0 0 30px rgba(96, 165, 250, 0.2);
+}
+
+/* KaTeX 公式样式 */
+.katex-display {
+  margin: 12px 0 !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0;
+}
+.katex { font-size: 1.05em !important; }
+
+/* Markdown 渲染样式 */
+.chat-text h1, .chat-text h2, .chat-text h3 {
+  margin: 10px 0 6px;
+  font-weight: 600;
+}
+.chat-text h1 { font-size: 1.2em; }
+.chat-text h2 { font-size: 1.1em; }
+.chat-text h3 { font-size: 1em; }
+.chat-text ul {
+  list-style: none;
+  padding: 0 0 0 16px;
+  margin: 6px 0;
+}
+.chat-text ul > li::before {
+  content: '•';
+  margin-right: 6px;
+  color: var(--brand-400, #60a5fa);
+}
+.chat-text .inline-code {
+  background: rgba(99,102,241,0.1);
+  border: 1px solid rgba(99,102,241,0.2);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.88em;
+  color: var(--violet-400, #a78bfa);
+}
+.chat-text .code-block {
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 8px 0;
+  overflow-x: auto;
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 0.85em;
+  line-height: 1.5;
 }
 </style>

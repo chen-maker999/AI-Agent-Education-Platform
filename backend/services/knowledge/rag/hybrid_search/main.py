@@ -282,25 +282,39 @@ class HybridSearchEngine:
     
     async def remove_documents(self, doc_ids: List[str]) -> Dict[str, Any]:
         """
-        从两个库删除文档
-        
+        从两个库删除文档 (BACKEND-004 修复)
+
         Args:
             doc_ids: 要删除的文档 ID 列表
-        
+
         Returns:
             删除结果
         """
-        # 从静态库删除 (需要重建)
+        # 从静态库删除 (标记需要重建)
         static_removed = 0
-        # TODO: 实现静态库删除
-        
+        if self.static_index.loaded:
+            # 静态库不支持直接删除，标记需要重建
+            # 这里标记静态库需要重建，实际删除在重建时进行
+            from services.knowledge.rag.retriever import get_hybrid_engine
+            synchronizer = None
+            try:
+                from services.knowledge.index_sync import synchronizer
+                if synchronizer:
+                    synchronizer._pending_static_rebuild = True
+                    synchronizer._dirty_docs_count += len(doc_ids)
+                    static_removed = len(doc_ids)
+                    logger.info(f"静态库标记为需要重建 (删除操作)，脏文档数：{synchronizer._dirty_docs_count}")
+            except Exception as e:
+                logger.warning(f"标记静态库重建失败：{e}")
+
         # 从动态库删除
         dynamic_removed = await self.dynamic_index.remove_documents(doc_ids)
-        
+
         return {
             "static_removed": static_removed,
             "dynamic_removed": dynamic_removed,
-            "total_removed": static_removed + dynamic_removed
+            "total_removed": static_removed + dynamic_removed,
+            "static_rebuild_pending": self.static_index.loaded and static_removed > 0
         }
     
     async def _trigger_background_rebuild(self):

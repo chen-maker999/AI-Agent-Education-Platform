@@ -238,27 +238,83 @@
             </svg>
             模型参数
           </h3>
-          <div class="config-row">
-            <div class="config-item">
-              <MacSelect v-model="config.full.model" label="模型选择" :options="modelOptions" />
-            </div>
-            <div class="config-item">
-              <MacSelect v-model="config.full.contextWindow" label="上下文窗口" :options="contextWindowOptions" />
-            </div>
+          <div class="config-item">
+            <MacSelect v-model="config.full.model" label="模型选择" :options="modelOptions" />
           </div>
-          <div class="config-row">
-            <div class="config-item">
-              <label>温度参数</label>
+          <div class="model-params">
+            <div class="param-item">
+              <label class="param-label">
+                <span>Temperature</span>
+                <span class="param-hint">
+                  ?
+                  <span class="param-hint-tooltip">
+                    <span class="param-hint-tooltip-content">控制输出的随机性。较高的值使输出更随机，较低的值使输出更确定</span>
+                  </span>
+                </span>
+              </label>
               <div class="slider-row">
                 <input type="range" min="0" max="100" v-model="config.full.temperature">
-                <span class="value">{{ config.full.temperature }}%</span>
+                <span class="value">{{ config.full.temperature / 100 }}</span>
               </div>
             </div>
-            <div class="config-item">
-              <label>最大输出</label>
-              <div class="input-with-unit">
-                <input type="number" v-model="config.full.maxTokens" min="100" max="8000" step="100">
+            <div class="param-item">
+              <label class="param-label">
+                <span>Top P</span>
+                <span class="param-hint">
+                  ?
+                  <span class="param-hint-tooltip">
+                    <span class="param-hint-tooltip-content">核采样参数。控制模型从概率最高的词中采样的比例，较低的值只考虑高概率词</span>
+                  </span>
+                </span>
+              </label>
+              <div class="slider-row">
+                <input type="range" min="0" max="100" v-model="config.full.topP">
+                <span class="value">{{ config.full.topP / 100 }}</span>
+              </div>
+            </div>
+            <div class="param-item">
+              <label class="param-label">
+                <span>Max Tokens</span>
+                <span class="param-hint">
+                  ?
+                  <span class="param-hint-tooltip">
+                    <span class="param-hint-tooltip-content">生成内容的最大 token 数量上限</span>
+                  </span>
+                </span>
+              </label>
+              <div class="input-with-unit param-input">
+                <input type="number" v-model="config.full.maxTokens" min="1" max="32000">
                 <span>tokens</span>
+              </div>
+            </div>
+            <div class="param-item">
+              <label class="param-label">
+                <span>Frequency Penalty</span>
+                <span class="param-hint">
+                  ?
+                  <span class="param-hint-tooltip">
+                    <span class="param-hint-tooltip-content">减少重复 token 的使用。正值会惩罚已出现过的词，使其不太可能再次出现</span>
+                  </span>
+                </span>
+              </label>
+              <div class="slider-row">
+                <input type="range" min="-200" max="200" v-model="config.full.frequencyPenalty">
+                <span class="value">{{ config.full.frequencyPenalty / 100 }}</span>
+              </div>
+            </div>
+            <div class="param-item">
+              <label class="param-label">
+                <span>Presence Penalty</span>
+                <span class="param-hint">
+                  ?
+                  <span class="param-hint-tooltip">
+                    <span class="param-hint-tooltip-content">鼓励模型讨论新话题。正值会增加生成新 token 的可能性</span>
+                  </span>
+                </span>
+              </label>
+              <div class="slider-row">
+                <input type="range" min="-200" max="200" v-model="config.full.presencePenalty">
+                <span class="value">{{ config.full.presencePenalty / 100 }}</span>
               </div>
             </div>
           </div>
@@ -324,11 +380,11 @@
               <div class="tool-info">
                 <div class="tool-icon-wrap">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <path v-if="tool.id === 'search'" d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35"/>
-                    <path v-else-if="tool.id === 'calculator'" d="M4 4h16v16H4zM8 12h8M8 8h2M14 8h2M8 16h2M14 16h2"/>
-                    <path v-else-if="tool.id === 'code'" d="M16 18l6-6-6-6M8 6l-6 6 6 6"/>
-                    <path v-else-if="tool.id === 'file'" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6"/>
-                    <path v-else-if="tool.id === 'web'" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                    <path v-if="tool.id === 'knowledge_search'" d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35"/>
+                    <path v-else-if="tool.id === 'web_search'" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    <path v-else-if="tool.id === 'download_to_knowledge'" d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                    <path v-else-if="tool.id === 'reading'" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6"/>
+                    <path v-else-if="tool.id === 'editing'" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
                     <path v-else d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                   </svg>
                 </div>
@@ -458,17 +514,20 @@ const fullPersonalityOptions = [
 ]
 
 const modelOptions = [
-  { value: 'kimi-pro', label: 'Kimi Pro (推荐)' },
-  { value: 'kimi-plus', label: 'Kimi Plus' },
-  { value: 'kimi-math', label: 'Kimi Math' },
-  { value: 'kimi-coder', label: 'Kimi Coder' }
+  { value: 'kimi-k2.5', label: 'kimi-k2.5', desc: 'Kimi 迄今最智能的模型，在 Agent、代码、视觉理解及一系列通用智能任务上取得开源 SoTA 表现。同时 Kimi K2.5 也是 Kimi 迄今最全能的模型，原生的多模态架构设计，同时支持视觉与文本输入、思考与非思考模式、对话与 Agent 任务。上下文 256k' },
+  { value: 'kimi-k2-0905-preview', label: 'kimi-k2-0905-preview', desc: '上下文长度 256k，在 0711 版本基础上增强了 Agentic Coding 能力、前端代码美观度和实用性、以及上下文理解能力' },
+  { value: 'kimi-k2-0711-preview', label: 'kimi-k2-0711-preview', desc: '上下文长度 128k，MoE 架构基础模型，总参数 1T，激活参数 32B。具备超强代码和 Agent 能力' },
+  { value: 'kimi-k2-turbo-preview', label: 'kimi-k2-turbo-preview', desc: 'K2 的高速版本，对标最新版本(0905)。输出速度提升至每秒 60-100 tokens，上下文长度 256k' },
+  { value: 'kimi-k2-thinking', label: 'kimi-k2-thinking', desc: 'K2 长思考模型，支持 256k 上下文，支持多步工具调用与思考，擅长解决更复杂的问题' },
+  { value: 'kimi-k2-thinking-turbo', label: 'kimi-k2-thinking-turbo', desc: 'K2 长思考模型的高速版本，支持 256k 上下文，擅长深度推理，输出速度提升至每秒 60-100 tokens' },
+  { value: 'moonshot-v1-8k', label: 'moonshot-v1-8k', desc: '适用于生成短文本，上下文长度 8k' },
+  { value: 'moonshot-v1-32k', label: 'moonshot-v1-32k', desc: '适用于生成长文本，上下文长度 32k' },
+  { value: 'moonshot-v1-128k', label: 'moonshot-v1-128k', desc: '适用于生成超长文本，上下文长度 128k' },
+  { value: 'moonshot-v1-8k-vision-preview', label: 'moonshot-v1-8k-vision-preview', desc: 'Vision 视觉模型，理解图片内容并输出文本，上下文长度 8k' },
+  { value: 'moonshot-v1-32k-vision-preview', label: 'moonshot-v1-32k-vision-preview', desc: 'Vision 视觉模型，理解图片内容并输出文本，上下文长度 32k' },
+  { value: 'moonshot-v1-128k-vision-preview', label: 'moonshot-v1-128k-vision-preview', desc: 'Vision 视觉模型，理解图片内容并输出文本，上下文长度 128k' }
 ]
 
-const contextWindowOptions = [
-  { value: '8k', label: '8K tokens' },
-  { value: '32k', label: '32K tokens' },
-  { value: '128k', label: '128K tokens' }
-]
 
 const ragModeOptions = [
   { value: 'semantic', label: '语义相似度' },
@@ -527,14 +586,16 @@ const simpleRoles = [
   { value: 'explainer', label: '解释者', desc: '深入浅出剖析概念' }
 ]
 
-// 完整模式工具
+// 完整模式工具（与后端 registry.py 中的 TOOL_DEFINITIONS 对应）
+// 注意：reading 和 editing 工具只允许访问用户在对话中上传的文件，不允许访问工作区或项目文件
 const tools = [
-  { id: 'search', name: '知识检索', desc: '搜索知识库内容' },
-  { id: 'calculator', name: '计算器', desc: '数学计算' },
-  { id: 'code', name: '代码执行', desc: '运行代码片段' },
-  { id: 'file', name: '文件读写', desc: '读取和写入文件' },
-  { id: 'web', name: '网页访问', desc: '获取网页内容' },
-  { id: 'image', name: '图像生成', desc: '生成相关图像' }
+  { id: 'knowledge_search', name: '知识库检索', desc: '搜索知识库中的相关资料，当询问需要查找资料、解释概念时使用' },
+  { id: 'web_search', name: '联网搜索', desc: '搜索和用户任务相关的网页内容，获取最新信息' },
+  { id: 'download_to_knowledge', name: '下载资料', desc: '从网上下载PDF、网页并保存到知识库' },
+  { id: 'reading', name: '读取上传文件', desc: '读取用户在对话中上传的文件内容' },
+  { id: 'editing', name: '编辑上传文件', desc: '修改用户在对话中上传的文件内容' },
+  { id: 'terminal', name: '终端命令', desc: '执行终端命令，如运行代码、安装依赖等' },
+  { id: 'preview', name: '结果预览', desc: '生成HTML、图表等可视化结果的预览' }
 ]
 
 // 预设配置
@@ -559,10 +620,7 @@ const config = ref({
     systemPrompt: '你是一个教育 AI 助手，专注于帮助学生理解和掌握知识。你应该友好、耐心地回答问题，并根据学生的水平调整解释的深度。',
     role: 'tutor',
     personality: 'balanced',
-    model: 'kimi-pro',
-    contextWindow: '32k',
-    temperature: 30,
-    maxTokens: 2000,
+    model: 'kimi-k2.5',
     enableRag: true,
     ragMode: 'hybrid',
     topK: 5,
@@ -571,7 +629,12 @@ const config = ref({
     safetyLevel: 50,
     allowedDomains: '',
     allowCodeExecution: false,
-    allowExternalLinks: true
+    allowExternalLinks: true,
+    temperature: 70,
+    topP: 95,
+    maxTokens: 4096,
+    frequencyPenalty: 0,
+    presencePenalty: 0
   }
 })
 
@@ -607,12 +670,82 @@ function resetSimple() {
     temperature: 30,
     safetyLevel: 'balanced'
   }
+  // 同时同步到完整配置
+  config.value.full = mapSimpleToFull(config.value.simple)
   showToastMessage('已恢复默认配置', 'info')
+}
+
+// 角色系统提示词映射
+const roleSystemPrompts = {
+  tutor: '你是一个教育 AI 助手，专注于帮助学生理解和掌握知识。你应该友好、耐心地回答问题，并根据学生的水平调整解释的深度。',
+  helper: '你是一个乐于助人的学习伙伴，随时准备为用户提供即时帮助和提示。当你看到用户遇到困难时，可以适当给予引导性提示，而不是直接给出完整答案，鼓励用户自己思考和探索。',
+  critic: '你是一个严谨的批评者，你的职责是指出用户的错误并引导深度反思。请用建设性的方式提出质疑，鼓励用户重新审视自己的理解和答案。',
+  explainer: '你是一个擅长深入浅出解释概念的教育者。无论多么复杂的概念，你都能用简单生动的语言、恰当的比喻和实际例子来阐述。'
+}
+
+// 性格倾向影响系数（0-100 严谨到活泼）
+function getPersonalityModifier(personality) {
+  // 严谨（0）→ 正式的语气，更精确的回答
+  // 活泼（100）→ 轻松的语气，更创造性的回答
+  return personality / 100
+}
+
+// 详细程度影响最大 token
+const verbosityTokens = {
+  brief: 1024,
+  normal: 4096,
+  detailed: 8192
+}
+
+// 安全等级映射
+const safetyLevelMapping = {
+  strict: 80,
+  balanced: 50,
+  open: 20
+}
+
+// 将简单模式配置映射到完整模式
+function mapSimpleToFull(simpleConfig) {
+  const personalityMod = getPersonalityModifier(simpleConfig.personality)
+
+  // 根据性格倾向调整 temperature（基础值 + 偏移）
+  // 严谨（0）→ temperature 偏低（精确）
+  // 活泼（100）→ temperature 偏高（创造）
+  const baseTemp = 30
+  const tempRange = 50 // 30-80
+  const mappedTemperature = Math.round(baseTemp + personalityMod * tempRange)
+
+  // 详细程度影响其他参数
+  const mappedMaxTokens = verbosityTokens[simpleConfig.verbosity] || 4096
+
+  return {
+    systemPrompt: roleSystemPrompts[simpleConfig.role] || roleSystemPrompts.tutor,
+    role: simpleConfig.role,
+    personality: personalityMod < 0.4 ? 'formal' : personalityMod > 0.6 ? 'casual' : 'balanced',
+    model: 'kimi-k2.5',
+    enableRag: true,
+    ragMode: 'hybrid',
+    topK: simpleConfig.verbosity === 'detailed' ? 8 : simpleConfig.verbosity === 'brief' ? 3 : 5,
+    similarityThreshold: 70,
+    tools: ['knowledge_search', 'web_search'],
+    safetyLevel: safetyLevelMapping[simpleConfig.safetyLevel] || 50,
+    allowedDomains: '',
+    allowCodeExecution: false,
+    allowExternalLinks: true,
+    temperature: mappedTemperature,
+    topP: 95,
+    maxTokens: mappedMaxTokens,
+    frequencyPenalty: 0,
+    presencePenalty: 0
+  }
 }
 
 function saveSimple() {
   localStorage.setItem('agent-config-simple', JSON.stringify(config.value.simple))
-  showToastMessage('简易配置已保存', 'success')
+  // 同时映射到完整模式配置并保存
+  config.value.full = mapSimpleToFull(config.value.simple)
+  localStorage.setItem('agent-config-full', JSON.stringify(config.value.full))
+  showToastMessage('简易配置已保存，已同步到完整参数', 'success')
 }
 
 function resetFull() {
@@ -620,10 +753,7 @@ function resetFull() {
     systemPrompt: '你是一个教育 AI 助手，专注于帮助学生理解和掌握知识。你应该友好、耐心地回答问题，并根据学生的水平调整解释的深度。',
     role: 'tutor',
     personality: 'balanced',
-    model: 'kimi-pro',
-    contextWindow: '32k',
-    temperature: 30,
-    maxTokens: 2000,
+    model: 'kimi-k2.5',
     enableRag: true,
     ragMode: 'hybrid',
     topK: 5,
@@ -632,7 +762,12 @@ function resetFull() {
     safetyLevel: 50,
     allowedDomains: '',
     allowCodeExecution: false,
-    allowExternalLinks: true
+    allowExternalLinks: true,
+    temperature: 70,
+    topP: 95,
+    maxTokens: 4096,
+    frequencyPenalty: 0,
+    presencePenalty: 0
   }
   activePreset.value = 'default'
   showToastMessage('已恢复默认配置', 'info')
@@ -663,6 +798,10 @@ function loadConfig() {
   const savedFull = localStorage.getItem('agent-config-full')
   if (savedSimple) {
     config.value.simple = JSON.parse(savedSimple)
+    // 如果没有完整配置或简单配置更新过，则同步
+    if (!savedFull) {
+      config.value.full = mapSimpleToFull(config.value.simple)
+    }
   }
   if (savedFull) {
     config.value.full = JSON.parse(savedFull)
@@ -1114,6 +1253,145 @@ loadConfig()
   text-align: right;
 }
 
+.model-desc {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #4a4a5a;
+  line-height: 1.6;
+  border-left: 3px solid #007aff;
+}
+
+.model-params {
+  margin-top: 16px;
+  padding: 16px;
+  background: linear-gradient(135deg, #f8f9ff 0%, #f5f7fc 100%);
+  border-radius: 12px;
+  border: 1px solid rgba(99, 102, 241, 0.1);
+}
+
+.param-item {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: white;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  transition: all 0.2s;
+}
+
+.param-item:hover {
+  border-color: rgba(0, 122, 255, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.08);
+}
+
+.param-item:last-child {
+  margin-bottom: 0;
+}
+
+.param-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.param-hint {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: #d2d2d7;
+  color: #63647b;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.param-hint:hover {
+  background: #b8b8bf;
+  color: #4a4a57;
+}
+
+/* 自定义 Tooltip 样式 */
+.param-hint-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%);
+  padding: 10px 14px;
+  background: white;
+  color: #1d1d1f;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+  border-radius: 10px;
+  white-space: normal;
+  width: 240px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.param-hint-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: white;
+}
+
+.param-hint:hover .param-hint-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(-4px);
+}
+
+.param-hint-tooltip-content {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* 参数输入框 */
+.param-input input {
+  width: 100px;
+  padding: 8px 12px;
+  border: 1px solid #d2d2d7;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #1d1d1f;
+  background: #f5f5f7;
+  transition: all 0.2s;
+}
+
+.param-input input:hover {
+  border-color: #b8b8bf;
+  background-color: #ebebed;
+}
+
+.param-input input:focus {
+  outline: none;
+  border-color: #007aff;
+  background-color: white;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+}
+
 .hint {
   display: block;
   font-size: 11px;
@@ -1522,23 +1800,23 @@ loadConfig()
   border-radius: 10px;
   font-size: 13px;
   font-weight: 500;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
   z-index: 1000;
+  background: white;
+  color: #1d1d1f;
+  border: 1px solid rgba(0,0,0,0.08);
 }
 
 .toast.success {
-  background: #34c759;
-  color: white;
+  border-color: rgba(52, 199, 89, 0.3);
 }
 
 .toast.info {
-  background: #5856d6;
-  color: white;
+  border-color: rgba(88, 86, 214, 0.3);
 }
 
 .toast.error {
-  background: #ff3b30;
-  color: white;
+  border-color: rgba(255, 59, 48, 0.3);
 }
 
 .toast-enter-active,

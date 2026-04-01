@@ -31,10 +31,20 @@ __MACOSX/
 # 报告和测试生成文件
 backend/*_Report.md
 backend/golden_docs/
-backend/data/
 backend/config/
 backend/evaluation_tools/
 backend/tests/
+
+# 运行时数据
+backend/data/
+backend/*.sql
+backend/*.json
+backend/*.txt
+backend/*.ba
+backend/*.doc
+backend/*.pdf
+*.code-workspace
+*.commit_msg.txt
 
 # Node.js
 node_modules/
