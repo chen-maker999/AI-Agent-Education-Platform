@@ -74,6 +74,7 @@ from services.knowledge.chunk.semantic_chunking import router as semantic_chunk_
 from services.knowledge.graphrag.main import router as graphrag_router
 from services.knowledge.trr.main import router as trr_router
 from services.knowledge.evaluation.ragas_evaluation import router as ragas_router
+from services.knowledge.health import router as health_router
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -466,6 +467,7 @@ app.include_router(semantic_chunk_router, prefix=settings.API_PREFIX)
 app.include_router(graphrag_router, prefix=settings.API_PREFIX)
 app.include_router(trr_router, prefix=settings.API_PREFIX)
 app.include_router(ragas_router, prefix=settings.API_PREFIX)
+app.include_router(health_router, prefix=settings.API_PREFIX)
 
 
 if __name__ == "__main__":

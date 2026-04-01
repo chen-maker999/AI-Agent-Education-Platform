@@ -7,6 +7,8 @@ P11 增强:
 - 静态库增量更新支持
 - 版本管理和一致性检查
 - 后台定期重建调度
+- BACKEND-002: FAISS 定期重建机制
+- BACKEND-005: FAISS 原子保存 + 备份
 """
 
 import asyncio
@@ -44,6 +46,13 @@ class IndexSynchronizer:
         self._pending_static_rebuild = False
         self._dirty_docs_count = 0
         self._last_static_rebuild: Optional[datetime] = None
+
+        # FAISS 定期重建 (BACKEND-002)
+        self._pending_faiss_rebuild = False
+        self._faiss_deleted_count = 0
+        self._last_faiss_rebuild: Optional[datetime] = None
+        self._faiss_rebuild_threshold = 100  # 删除 100 个文档后触发重建
+        self._faiss_rebuild_interval_hours = 24  # 24 小时定时重建
 
         # 后台重建线程
         self._rebuild_thread: Optional[threading.Thread] = None
@@ -271,13 +280,13 @@ class IndexSynchronizer:
             results["tfidf_failed"] = len(doc_ids)
         
         # 3. FAISS 索引不支持直接删除，需要重建或标记删除
-        # 这里使用标记删除的方式
+        # 这里使用标记删除的方式 (BACKEND-002 修复)
         if self.faiss_loaded:
             try:
                 from services.knowledge.faiss_indexer.main import doc_id_to_index, index_to_doc_id
                 from services.knowledge.faiss_indexer.main import faiss_index
                 import numpy as np
-                
+
                 # 从映射中移除
                 removed_indices = []
                 for doc_id in doc_ids:
@@ -290,12 +299,15 @@ class IndexSynchronizer:
                         results["faiss_success"] += 1
                     else:
                         results["faiss_failed"] += 1
-                
-                # 注意：FAISS 索引本身不支持删除，需要重建
-                # 这里只更新了映射，实际向量还在索引中
-                # 下次搜索时会通过映射过滤掉已删除的文档
+
+                # BACKEND-002: 标记需要重建并累计删除数
+                self._pending_faiss_rebuild = True
+                self._faiss_deleted_count += len(doc_ids)
                 results["faiss_rebuild_needed"] = True
-                
+                results["faiss_deleted_count"] = self._faiss_deleted_count
+
+                logger.info(f"FAISS 删除 {len(doc_ids)} 个文档，累计删除：{self._faiss_deleted_count}，待重建：{self._pending_faiss_rebuild}")
+
                 # 保存 FAISS 索引
                 from services.knowledge.faiss_indexer.main import save_index_to_disk
                 save_index_to_disk()
@@ -504,14 +516,14 @@ class IndexSynchronizer:
         return stats
 
     def _start_background_rebuild_scheduler(self):
-        """启动后台重建调度器"""
+        """启动后台重建调度器 (BACKEND-002 增强)"""
         def scheduler_loop():
             """调度器循环"""
-            logger.info("静态库后台重建调度器已启动")
+            logger.info("静态库/FAISS 后台重建调度器已启动")
             while not self._stop_rebuild:
                 time.sleep(60)  # 每分钟检查一次
 
-                # 检查是否需要重建
+                # 检查是否需要重建静态库
                 if self._pending_static_rebuild:
                     # 检查脏文档数是否超过阈值 (100 个文档)
                     if self._dirty_docs_count >= 100:
@@ -528,6 +540,24 @@ class IndexSynchronizer:
                             # 首次重建
                             logger.info("首次触发静态库重建")
                             asyncio.create_task(self._rebuild_static_index())
+
+                # BACKEND-002: 检查是否需要重建 FAISS 索引
+                if self._pending_faiss_rebuild:
+                    # 检查删除数是否超过阈值
+                    if self._faiss_deleted_count >= self._faiss_rebuild_threshold:
+                        logger.info(f"触发 FAISS 索引重建，累计删除：{self._faiss_deleted_count}")
+                        asyncio.create_task(self._rebuild_faiss_index())
+                    else:
+                        # 检查是否超过 24 小时
+                        if self._last_faiss_rebuild:
+                            hours_since_rebuild = (datetime.now() - self._last_faiss_rebuild).total_seconds() / 3600
+                            if hours_since_rebuild >= self._faiss_rebuild_interval_hours:
+                                logger.info(f"定时触发 FAISS 索引重建 ({self._faiss_rebuild_interval_hours}小时)")
+                                asyncio.create_task(self._rebuild_faiss_index())
+                        else:
+                            # 首次重建
+                            logger.info("首次触发 FAISS 索引重建")
+                            asyncio.create_task(self._rebuild_faiss_index())
 
         self._rebuild_thread = threading.Thread(target=scheduler_loop, daemon=True)
         self._rebuild_thread.start()
@@ -600,6 +630,81 @@ class IndexSynchronizer:
 
         except Exception as e:
             logger.error(f"静态库重建失败：{e}")
+
+    async def _rebuild_faiss_index(self):
+        """
+        重建 FAISS 索引 (BACKEND-002 修复)
+        
+        从数据库读取所有有效文档，重新构建 FAISS 索引以清理已删除的向量
+        """
+        if not self.faiss_loaded:
+            logger.warning("FAISS 未加载，跳过重建")
+            return
+
+        try:
+            logger.info(f"开始重建 FAISS 索引...")
+
+            # 从数据库获取所有有效文档
+            async with AsyncSessionLocal() as session:
+                from sqlalchemy import select
+                from services.knowledge.rag.main import RAGDocument
+                result = await session.execute(select(RAGDocument))
+                documents = [
+                    {
+                        'doc_id': row.doc_id,
+                        'content': row.content,
+                        'course_id': row.course_id,
+                        'metadata': row.doc_metadata
+                    }
+                    for row in result.scalars().all()
+                ]
+
+            if not documents:
+                logger.warning("没有文档可重建 FAISS 索引")
+                self._pending_faiss_rebuild = False
+                self._faiss_deleted_count = 0
+                return
+
+            # 重置 FAISS 索引
+            from services.knowledge.faiss_indexer.main import (
+                initialize_faiss_index, add_vectors_to_index,
+                save_index_to_disk, doc_id_to_index, index_to_doc_id, faiss_index
+            )
+            import numpy as np
+            from services.knowledge.embedding.tfidf_main import get_text_embedding
+
+            logger.info(f"重置 FAISS 索引，共 {len(documents)} 个文档")
+
+            # 清空映射
+            doc_id_to_index.clear()
+            index_to_doc_id.clear()
+
+            # 计算嵌入并添加
+            embeddings = []
+            valid_doc_ids = []
+
+            for doc_data in documents:
+                try:
+                    embedding = get_text_embedding(doc_data['content'])
+                    embeddings.append(embedding)
+                    valid_doc_ids.append(doc_data['doc_id'])
+                except Exception as e:
+                    logger.warning(f"FAISS 嵌入计算失败 {doc_data['doc_id']}: {e}")
+
+            if embeddings:
+                vectors = np.array(embeddings).astype('float32')
+                add_vectors_to_index(vectors, valid_doc_ids)
+                save_index_to_disk()
+
+                # 重置状态
+                self._pending_faiss_rebuild = False
+                self._faiss_deleted_count = 0
+                self._last_faiss_rebuild = datetime.now()
+
+                logger.info(f"FAISS 索引重建完成：{len(valid_doc_ids)} 个向量")
+
+        except Exception as e:
+            logger.error(f"FAISS 重建失败：{e}", exc_info=True)
 
     async def trigger_static_rebuild(self) -> Dict[str, Any]:
         """

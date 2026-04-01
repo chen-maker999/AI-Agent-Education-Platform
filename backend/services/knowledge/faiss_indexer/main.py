@@ -215,10 +215,21 @@ async def search_vectors(
 # ==================== 持久化 ====================
 INDEX_SAVE_PATH = "data/faiss_index.bin"
 INDEX_META_PATH = "data/faiss_index.meta.pkl"
+INDEX_BACKUP_PATH = "data/faiss_index.bin.backup"
+MAX_BACKUPS = 3  # 保留最近 3 个备份
 
 
-def save_index_to_disk(path: str = None):
-    """保存索引到磁盘"""
+def save_index_to_disk(path: str = None, create_backup: bool = True):
+    """
+    保存索引到磁盘 (原子操作 + 备份) - BACKEND-005 修复
+    
+    Args:
+        path: 保存路径
+        create_backup: 是否创建备份
+        
+    Returns:
+        是否成功
+    """
     global faiss_index, index_metadata, doc_id_to_index
 
     if faiss_index is None:
@@ -230,32 +241,83 @@ def save_index_to_disk(path: str = None):
 
     try:
         import faiss
+        import shutil
 
         # 确保目录存在
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
 
-        # 保存 FAISS 索引
-        faiss.write_index(faiss_index, path)
+        # 1. 创建备份 (如果存在旧索引)
+        if create_backup and os.path.exists(path):
+            try:
+                # 轮转备份文件
+                for i in range(MAX_BACKUPS, 0, -1):
+                    old_backup = f"{path}.backup.{i}"
+                    new_backup = f"{path}.backup.{i + 1}"
+                    if os.path.exists(old_backup):
+                        if i == MAX_BACKUPS:
+                            os.remove(old_backup)  # 删除最旧的备份
+                        else:
+                            shutil.copy2(old_backup, new_backup)
+                
+                # 移动当前备份
+                backup_path = f"{path}.backup.1"
+                shutil.copy2(path, backup_path)
+                shutil.copy2(f"{path}.meta.pkl", f"{backup_path}.meta.pkl")
+                print(f"已创建备份：{backup_path}")
+            except Exception as e:
+                print(f"创建备份失败：{e}")
 
-        # 保存元数据和映射
-        metadata = {
-            "index_metadata": index_metadata,
-            "doc_id_to_index": doc_id_to_index,
-            "index_to_doc_id": index_to_doc_id
-        }
+        # 2. 写入临时文件 (原子操作第一步)
+        temp_path = f"{path}.tmp"
+        temp_meta_path = f"{path}.tmp.meta.pkl"
+        
+        try:
+            faiss.write_index(faiss_index, temp_path)
+            
+            # 保存元数据到临时文件
+            metadata = {
+                "index_metadata": index_metadata,
+                "doc_id_to_index": doc_id_to_index,
+                "index_to_doc_id": index_to_doc_id
+            }
+            with open(temp_meta_path, "wb") as f:
+                pickle.dump(metadata, f)
+        except Exception as e:
+            # 清理临时文件
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            if os.path.exists(temp_meta_path):
+                os.remove(temp_meta_path)
+            raise e
 
-        with open(f"{path}.meta.pkl", "wb") as f:
-            pickle.dump(metadata, f)
+        # 3. 原子替换 (先删后移)
+        if os.path.exists(path):
+            os.remove(path)
+        if os.path.exists(f"{path}.meta.pkl"):
+            os.remove(f"{path}.meta.pkl")
+        
+        shutil.move(temp_path, path)
+        shutil.move(temp_meta_path, f"{path}.meta.pkl")
 
-        print(f"FAISS 索引保存到磁盘：{path} ({faiss_index.ntotal} vectors)")
+        print(f"FAISS 索引保存到磁盘 (原子操作): {path} ({faiss_index.ntotal} vectors)")
         return True
+
     except Exception as e:
         print(f"保存索引失败：{e}")
         return False
 
 
-def load_index_from_disk(path: str = None):
-    """从磁盘加载索引"""
+def load_index_from_disk(path: str = None, try_backup: bool = True):
+    """
+    从磁盘加载索引 (支持备份恢复) - BACKEND-005 修复
+    
+    Args:
+        path: 加载路径
+        try_backup: 加载失败时是否尝试备份
+        
+    Returns:
+        是否成功
+    """
     global faiss_index, index_metadata, doc_id_to_index, index_to_doc_id
 
     if path is None:
@@ -266,6 +328,12 @@ def load_index_from_disk(path: str = None):
 
         if not os.path.exists(path):
             print(f"FAISS 索引文件不存在：{path}")
+            if try_backup:
+                # 尝试从备份恢复
+                backup_path = f"{path}.backup.1"
+                if os.path.exists(backup_path):
+                    print(f"尝试从备份恢复：{backup_path}")
+                    return load_index_from_disk(backup_path, try_backup=False)
             return False
 
         # 加载 FAISS 索引
@@ -282,8 +350,15 @@ def load_index_from_disk(path: str = None):
 
         print(f"FAISS 索引加载成功：{faiss_index.ntotal} vectors")
         return True
+        
     except Exception as e:
         print(f"加载索引失败：{e}")
+        if try_backup:
+            # 尝试从备份恢复
+            backup_path = f"{path}.backup.1"
+            if os.path.exists(backup_path):
+                print(f"尝试从备份恢复：{backup_path}")
+                return load_index_from_disk(backup_path, try_backup=False)
         return False
 
 

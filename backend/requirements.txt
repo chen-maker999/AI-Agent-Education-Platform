@@ -1,48 +1,47 @@
 # AI-Agent Education Platform - Backend Dependencies
 
 # Web Framework
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-python-multipart==0.0.6
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.6
 
 # Database
-sqlmodel==0.0.14
-asyncpg==0.29.0
-psycopg2-binary==2.9.9
-redis==5.0.1
-neo4j==5.14.1
+sqlmodel>=0.0.14
+asyncpg>=0.29.0
+psycopg2-binary>=2.9.9
+redis>=5.0.1
+neo4j>=5.14.1
 
 # Authentication
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-python-multipart==0.0.6
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
 
 # API & HTTP
-aiohttp==3.9.1
-httpx==0.26.0
-beautifulsoup4==4.12.3
-pydantic==2.5.3
-pydantic-settings==2.1.0
-email-validator==2.1.0.post1
+aiohttp>=3.9.1
+httpx>=0.26.0
+beautifulsoup4>=4.12.3
+pydantic>=2.5.3
+pydantic-settings>=2.1.0
+email-validator>=2.1.0.post1
 
 # Validation & Rate Limiting
-slowapi==0.1.9
+slowapi>=0.1.9
 
 # Task Queue
-celery==5.3.6
-kombu==5.3.5
+celery>=5.3.6
+kombu>=5.3.5
 
 # File Storage
-minio==7.2.0
+minio>=7.2.0
 
 # Message Queue
-aiokafka==0.10.0
-pika==1.3.2
+aiokafka>=0.10.0
+pika>=1.3.2
 
 # PDF Processing
 pdfplumber==0.10.3
-PyMuPDF==1.23.26  # 更强的 PDF 文本提取
-pymupdf4llm==0.0.10  # PDF 转 Markdown (支持 OCR)
+PyMuPDF>=1.24.0  # 更强的 PDF 文本提取
+pymupdf4llm>=0.0.10  # PDF 转 Markdown (支持 OCR)
 pdf2image==1.16.3  # PDF 转图片 (用于 OCR)
 pytesseract==0.3.10  # Tesseract OCR
 
@@ -50,12 +49,12 @@ pytesseract==0.3.10  # Tesseract OCR
 olefile==0.47  # 读取 OLE 文件 (用于.doc 文件)
 
 # Vector Search & NLP
-faiss-cpu==1.7.4
-numpy==1.26.3
+faiss-cpu>=1.12.0
+numpy>=1.26.3
 jieba==0.42.1
-scikit-learn==1.4.0
-sentence-transformers==2.3.1  # Cross-Encoder 重排序
-torch==2.1.2  # PyTorch 深度学习框架
+scikit-learn>=1.4.0
+sentence-transformers>=2.3.1  # Cross-Encoder 重排序
+torch>=2.9.0  # PyTorch 深度学习框架
 
 # Configuration Center (P3-001)
 aiofiles>=23.0.0
@@ -65,9 +64,9 @@ etcd3>=0.12.0  # 可选：etcd 后端支持
 prometheus-client>=0.19.0
 
 # Utilities
-python-dotenv==1.0.0
-python-dateutil==2.8.2
-pytz==2023.3.post1
+python-dotenv>=1.0.0
+python-dateutil>=2.8.2
+pytz>=2023.3.post1
 
 # PDF Generation
 reportlab==4.0.9
@@ -76,16 +75,16 @@ reportlab==4.0.9
 Pillow>=11.0.0
 
 # Dev & Testing
-pytest==7.4.4
-pytest-asyncio==0.23.3
-pytest-cov==4.1.0
+pytest>=7.4.4
+pytest-asyncio>=0.23.3
+pytest-cov>=4.1.0
 
 # Logging
-loguru==0.7.2
+loguru>=0.7.2
 
 # RAG Evaluation (P11 RAG Optimization)
-ragas==0.1.12  # RAG 评估框架
-langchain==0.3.1  # LangChain 核心库
-langchain-community==0.3.1  # LangChain 社区集成
-langchain-openai==0.2.1  # LangChain OpenAI 集成 (用于 RAGAS)
-datasets==2.14.7  # HuggingFace 数据集 (用于评估数据)
+ragas>=0.1.12  # RAG 评估框架
+langchain>=0.3.1  # LangChain 核心库
+langchain-community>=0.3.1  # LangChain 社区集成
+langchain-openai>=0.2.1  # LangChain OpenAI 集成 (用于 RAGAS)
+datasets>=2.14.7  # HuggingFace 数据集 (用于评估数据)

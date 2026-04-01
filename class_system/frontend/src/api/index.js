@@ -199,8 +199,14 @@ export const ragApi = {
   },
 
   health: () => api.get('/knowledge/rag/health'),
-  history: (sessionId) => api.get(`/knowledge/rag/history/${sessionId}`),
-  clearHistory: (sessionId) => api.delete(`/knowledge/rag/history/${sessionId}`),
+  // 获取学生所有会话历史列表
+  history: (studentId, page = 1, pageSize = 20) => api.get(`/knowledge/rag/history/${studentId}`, {
+    params: { page, page_size: pageSize }
+  }),
+  // 获取指定会话的完整历史记录
+  getSessionHistory: (sessionId) => api.get(`/knowledge/rag/history/session/${sessionId}`),
+  // 清除指定会话的历史记录
+  clearHistory: (sessionId) => api.delete(`/knowledge/rag/history/session/${sessionId}`),
 
   // RAG知识库对话 - 用于知识库检索
   ragChat: (data) => api.post('/knowledge/rag/chat', {

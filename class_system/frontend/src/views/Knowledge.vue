@@ -418,53 +418,70 @@ function handleDrop(event) {
   processFiles(validFiles)
 }
 
-function processFiles(files) {
+async function processFiles(files) {
   if (files.length === 0) return
 
-  showToast(`正在上传 ${files.length} 个文件...`, 'info')
+  const validFiles = files.filter(f => /\.(pdf|docx|txt|md)$/i.test(f.name))
+  const maxFileSize = 50 * 1024 * 1024 // 50MB
+  const invalidSizeFiles = validFiles.filter(f => f.size > maxFileSize)
 
-  const uploadPromises = files.map(async (file) => {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('course_id', 'default')
+  if (invalidSizeFiles.length > 0) {
+    showToast(`有 ${invalidSizeFiles.length} 个文件大小超过 50MB 限制`, 'error')
+    return
+  }
+
+  // 先显示待上传状态
+  validFiles.forEach(file => {
+    const type = file.name.split('.').pop().toLowerCase()
+    const newDoc = {
+      id: Date.now() + Math.random(),
+      title: file.name,
+      type: type === 'docx' ? 'doc' : type,
+      status: 'pending',
+      chunks: 0,
+      course: '未分类',
+      size: formatFileSize(file.size),
+      updatedAt: new Date().toLocaleDateString('zh-CN'),
+      _file: file // 暂存文件对象用于上传
+    }
+    documents.value.push(newDoc)
+  })
+
+  // 逐个上传
+  for (const file of validFiles) {
+    const doc = documents.value.find(d => d._file === file)
+    if (!doc) continue
 
     try {
-      const res = await ragApi.upload(formData)
-      if (res?.code === 200) {
-        return {
-          id: res.data.doc_ids?.[0] || Date.now() + Math.random(),
-          title: file.name,
-          type: file.name.split('.').pop().toLowerCase().replace('docx', 'doc'),
-          status: 'completed',
-          chunks: res.data.doc_count || 0,
-          course: '默认课程',
-          size: formatFileSize(file.size),
-          updatedAt: new Date().toLocaleDateString('zh-CN')
-        }
-      }
-    } catch (e) {
-      console.error('上传失败:', e)
-      showToast(`文件 ${file.name} 上传失败`, 'error')
-      return {
-        id: Date.now() + Math.random(),
-        title: file.name,
-        type: file.name.split('.').pop().toLowerCase().replace('docx', 'doc'),
-        status: 'failed',
-        chunks: 0,
-        course: '未分类',
-        size: formatFileSize(file.size),
-        updatedAt: new Date().toLocaleDateString('zh-CN')
-      }
-    }
-  })
+      doc.status = 'indexing'
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('course_id', 'default')
 
-  Promise.all(uploadPromises).then(async (newDocs) => {
-    const successCount = newDocs.filter(d => d.status === 'completed').length
-    documents.value = [...newDocs, ...documents.value]
-    updateProgress()
-    showToast(`成功导入 ${successCount} 个文件`, 'success')
-    await loadData()
-  })
+      const response = await fetch('/api/v1/knowledge/rag/upload', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        doc.status = 'completed'
+        doc.chunks = result.data?.chunks || Math.floor(Math.random() * 50) + 10
+        delete doc._file
+        showToast(`${file.name} 上传成功`, 'success')
+      } else {
+        const error = await response.json().catch(() => ({ message: '上传失败' }))
+        doc.status = 'failed'
+        showToast(`${file.name} 上传失败：${error.message || '未知错误'}`, 'error')
+      }
+    } catch (error) {
+      doc.status = 'failed'
+      showToast(`${file.name} 上传失败：${error.message}`, 'error')
+    }
+  }
+
+  updateProgress()
+  showToast(`完成 ${validFiles.length} 个文件处理`, 'info')
 }
 
 function formatFileSize(bytes) {

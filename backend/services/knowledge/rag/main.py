@@ -794,7 +794,7 @@ async def delete_documents_by_filename(filename: str):
 
 @router.get("/history/{student_id}")
 async def get_chat_history(student_id: str, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)):
-    """获取学生的对话历史"""
+    """获取学生的对话历史列表"""
     async with AsyncSessionLocal() as session:
         from sqlalchemy import select, func
 
@@ -813,6 +813,57 @@ async def get_chat_history(student_id: str, page: int = Query(1, ge=1), page_siz
         items = [{"session_id": s.session_id, "query": s.query, "answer": s.answer, "sources": s.sources, "created_at": s.created_at.isoformat() if s.created_at else None} for s in sessions]
 
     return {"code": 200, "message": "success", "data": {"items": items, "total": total}}
+
+
+@router.get("/history/session/{session_id}")
+async def get_session_history(session_id: str):
+    """获取指定会话的完整历史记录"""
+    async with AsyncSessionLocal() as session:
+        from sqlalchemy import select
+
+        result = await session.execute(
+            select(RAGSession)
+            .where(RAGSession.session_id == session_id)
+            .order_by(RAGSession.created_at.asc())
+        )
+        sessions = result.scalars().all()
+
+        if not sessions:
+            return {"code": 404, "message": "会话不存在", "data": {"items": []}}
+
+        items = [{
+            "id": str(s.id),
+            "session_id": s.session_id,
+            "student_id": s.student_id,
+            "query": s.query,
+            "answer": s.answer,
+            "sources": s.sources,
+            "created_at": s.created_at.isoformat() if s.created_at else None
+        } for s in sessions]
+
+    return {"code": 200, "message": "success", "data": {"items": items, "total": len(items)}}
+
+
+@router.delete("/history/session/{session_id}")
+async def clear_session_history(session_id: str):
+    """清除指定会话的历史记录"""
+    async with AsyncSessionLocal() as session:
+        from sqlalchemy import delete, select, func
+
+        # 先查询是否存在
+        count_result = await session.execute(
+            select(func.count(RAGSession.id)).where(RAGSession.session_id == session_id)
+        )
+        total = count_result.scalar() or 0
+
+        if total == 0:
+            return {"code": 404, "message": "会话不存在"}
+
+        # 删除会话
+        await session.execute(delete(RAGSession).where(RAGSession.session_id == session_id))
+        await session.commit()
+
+    return {"code": 200, "message": "会话历史已清除", "data": {"deleted_count": total}}
 
 
 @router.post("/fetch")
