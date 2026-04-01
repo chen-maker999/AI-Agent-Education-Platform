@@ -37,6 +37,7 @@ class UserResponse(BaseModel):
     id: str
     username: str
     email: str
+    phone: Optional[str] = None
     role: str
     status: str = "active"
     roles: list[str] = Field(default_factory=list)

@@ -68,6 +68,13 @@ class ChatRequest(BaseModel):
     mode: str = "general"  # "general" 通用问答 | "learning" 学习问答
     context: Dict[str, Any] = {}
     tools: Optional[List[Dict[str, Any]]] = None  # 支持 Function Calling
+    # 模型参数
+    model: Optional[str] = "kimi-k2.5"
+    temperature: Optional[float] = 0.7
+    top_p: Optional[float] = 0.9
+    max_tokens: Optional[int] = 4096
+    frequency_penalty: Optional[float] = 0.0
+    presence_penalty: Optional[float] = 0.0
 
 
 class FeedbackRequest(BaseModel):
@@ -267,15 +274,23 @@ async def generate_response_with_kimi(
 
         # 如果有工具定义，使用 Function Calling
         if tools:
+            model_for_call = "kimi-k2.5"  # kimi-k2.5 enforces fixed params
+            effective_top_p = 1.0  # kimi-k2.5 requires top_p=1.0
             result = await kimi_client.chat(
                 messages=messages,
                 tools=tools,
-                temperature=0.7,
-                max_tokens=2048
+                model=model_for_call,
+                temperature=1.0,  # kimi-k2.5 模型只接受 temperature=1
+                max_tokens=2048,
+                top_p=effective_top_p,
             )
 
             if "error" in result:
-                return {"type": "message", "content": f"抱歉，调用 AI 服务时出错：{result['error']}"}
+                detail = result.get("detail") or ""
+                err_text = f"抱歉，调用 AI 服务时出错：{result['error']}"
+                if detail:
+                    err_text = err_text + " " + detail[:800]
+                return {"type": "message", "content": err_text}
 
             choices = result.get("choices", [])
             if not choices:
@@ -295,13 +310,21 @@ async def generate_response_with_kimi(
             return {"type": "message", "content": content}
         else:
             # 没有工具：用完整 messages（含历史）调用 chat，保证上下文关联
+            model_for_call = "kimi-k2.5"
+            effective_top_p = 1.0  # kimi-k2.5 requires top_p=1.0
             result = await kimi_client.chat(
                 messages=messages,
-                temperature=0.7,
+                model=model_for_call,
+                temperature=1.0,  # kimi-k2.5 模型只接受 temperature=1
                 max_tokens=2048,
+                top_p=effective_top_p,
             )
             if "error" in result:
-                return {"type": "message", "content": f"抱歉，调用 AI 服务时出错：{result['error']}"}
+                detail = result.get("detail") or ""
+                err_text = f"抱歉，调用 AI 服务时出错：{result['error']}"
+                if detail:
+                    err_text = err_text + " " + detail[:800]
+                return {"type": "message", "content": err_text}
             choices = result.get("choices", [])
             if not choices:
                 return {"type": "message", "content": "抱歉，没有收到 AI 的回复。"}
@@ -621,7 +644,21 @@ async def send_message_stream(request: ChatRequest):
             full_response = ""
             buffer = ""  # 字符缓冲
 
-            async for chunk in kimi_client.chat_stream(messages):
+            # kimi-k2.5 enforces fixed top_p=0.95; other values cause silent failures
+            model_for_call = request.model or "kimi-k2.5"
+            effective_top_p = request.top_p if model_for_call not in {"kimi-k2.5", "kimi-k2.5-flash"} else 0.95
+            effective_temperature = request.temperature if model_for_call not in {"kimi-k2.5", "kimi-k2.5-flash"} else 1.0
+
+            async for chunk in kimi_client.chat_stream(
+                messages,
+                temperature=effective_temperature,
+                max_tokens=request.max_tokens or 4096,
+                top_p=effective_top_p,
+                frequency_penalty=request.frequency_penalty or 0.0,
+                presence_penalty=request.presence_penalty or 0.0,
+                model=model_for_call,
+                tools=request.tools
+            ):
                 if chunk.startswith("data: "):
                     data = chunk[6:]
                     if data == "[DONE]":

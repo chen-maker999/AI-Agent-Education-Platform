@@ -72,6 +72,9 @@ pytz==2023.3.post1
 # PDF Generation
 reportlab==4.0.9
 
+# Image grading overlays (11+ for Python 3.13 wheels)
+Pillow>=11.0.0
+
 # Dev & Testing
 pytest==7.4.4
 pytest-asyncio==0.23.3

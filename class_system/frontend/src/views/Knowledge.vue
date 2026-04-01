@@ -419,24 +419,52 @@ function handleDrop(event) {
 }
 
 function processFiles(files) {
-  files.forEach(file => {
-    const type = file.name.split('.').pop().toLowerCase()
-    const newDoc = {
-      id: Date.now() + Math.random(),
-      title: file.name,
-      type: type === 'docx' ? 'doc' : type,
-      status: 'pending',
-      chunks: 0,
-      course: '未分类',
-      size: formatFileSize(file.size),
-      updatedAt: new Date().toLocaleDateString('zh-CN')
+  if (files.length === 0) return
+
+  showToast(`正在上传 ${files.length} 个文件...`, 'info')
+
+  const uploadPromises = files.map(async (file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('course_id', 'default')
+
+    try {
+      const res = await ragApi.upload(formData)
+      if (res?.code === 200) {
+        return {
+          id: res.data.doc_ids?.[0] || Date.now() + Math.random(),
+          title: file.name,
+          type: file.name.split('.').pop().toLowerCase().replace('docx', 'doc'),
+          status: 'completed',
+          chunks: res.data.doc_count || 0,
+          course: '默认课程',
+          size: formatFileSize(file.size),
+          updatedAt: new Date().toLocaleDateString('zh-CN')
+        }
+      }
+    } catch (e) {
+      console.error('上传失败:', e)
+      showToast(`文件 ${file.name} 上传失败`, 'error')
+      return {
+        id: Date.now() + Math.random(),
+        title: file.name,
+        type: file.name.split('.').pop().toLowerCase().replace('docx', 'doc'),
+        status: 'failed',
+        chunks: 0,
+        course: '未分类',
+        size: formatFileSize(file.size),
+        updatedAt: new Date().toLocaleDateString('zh-CN')
+      }
     }
-    documents.value.unshift(newDoc)
   })
-  if (files.length > 0) {
+
+  Promise.all(uploadPromises).then(async (newDocs) => {
+    const successCount = newDocs.filter(d => d.status === 'completed').length
+    documents.value = [...newDocs, ...documents.value]
     updateProgress()
-    showToast(`成功导入 ${files.length} 个文件`, 'success')
-  }
+    showToast(`成功导入 ${successCount} 个文件`, 'success')
+    await loadData()
+  })
 }
 
 function formatFileSize(bytes) {
@@ -445,7 +473,16 @@ function formatFileSize(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
-function deleteDocument(id) {
+async function deleteDocument(id) {
+  const doc = documents.value.find(d => d.id === id)
+  if (!doc) return
+
+  try {
+    await ragApi.deleteDocument(doc.filename || doc.title)
+  } catch (e) {
+    console.error('删除文档失败:', e)
+  }
+
   documents.value = documents.value.filter(d => d.id !== id)
   selectedDocs.value.delete(id)
   selectedDocs.value = new Set(selectedDocs.value)
@@ -495,21 +532,23 @@ function startIndexing() {
 
 async function loadData() {
   try {
-    const docsRes = await ragApi.listDocuments()
+    const docsRes = await ragApi.listDocuments('default')
     if (docsRes?.data) {
-      documents.value = docsRes.data.map((doc, i) => ({
-        id: doc.id || Date.now() + i,
-        title: doc.title || doc.filename || '未命名文档',
-        type: (doc.filename?.split('.').pop() || 'txt').toLowerCase(),
-        status: doc.status || 'pending',
-        chunks: doc.chunks || 0,
-        course: doc.course || '通用',
+      documents.value = (docsRes.data.items || []).map((doc, i) => ({
+        id: doc.doc_id || Date.now() + i,
+        title: doc.filename || doc.title || '未命名文档',
+        type: (doc.filename?.split('.').pop() || 'txt').toLowerCase().replace('docx', 'doc'),
+        status: doc.doc_count > 0 ? 'completed' : 'pending',
+        chunks: doc.doc_count || doc.chunks || 0,
+        course: doc.course_id || doc.course || '默认课程',
         size: doc.size || '未知',
+        filename: doc.filename || doc.title,
         updatedAt: doc.updated_at ? new Date(doc.updated_at).toLocaleDateString('zh-CN') : '未知'
       }))
     }
     updateProgress()
-  } catch {
+  } catch (e) {
+    console.error('加载文档失败:', e)
     documents.value = []
   }
 }

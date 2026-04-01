@@ -126,7 +126,7 @@ class Settings(BaseSettings):
     # Kimi API (Moonshot)
     KIMI_API_KEY: Optional[str] = None
     KIMI_API_ENDPOINT: str = "https://api.moonshot.cn/v1"
-    KIMI_MODEL: str = "moonshot-v1-128k"
+    KIMI_MODEL: str = "kimi-k2.5"
     KIMI_TIMEOUT: int = 30
 
     # Elasticsearch
