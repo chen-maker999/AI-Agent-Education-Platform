@@ -42,55 +42,52 @@
       <div class="chat-col">
         <div class="chat-shell" :class="{ 'is-started': hasStarted }">
 
-          <!-- Welcome header -->
-          <transition name="header-out">
-            <div v-if="!hasStarted" class="welcome-header">
-              <div class="glow-title-wrap"></div>
-            </div>
-          </transition>
-
-          <!-- Top spacer -->
-          <div class="top-spacer" :class="{ 'top-spacer--gone': hasStarted }"></div>
-
-          <!-- Top toolbar -->
-          <div v-if="hasStarted" class="chat-toolbar">
-            <!-- 会话轨迹按钮 + 展开面板 -->
+          <!-- 持久顶栏 -->
+          <div class="top-persistent-bar">
+            <!-- 会话轨迹 -->
             <div class="toolbar-dropdown">
-              <button class="pill-btn" :class="{ active: showHistory }" @click="showHistory = !showHistory; if(showHistory) showSources = false">
+              <button class="pill-btn" :class="{ active: showHistory }" @click="showHistory = !showHistory; showSources = false">
                 <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
                   <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.2"/>
                   <path d="M6.5 3.5v3l1.5 1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
                 </svg>
                 会话轨迹
-                <svg class="pill-chevron" :class="{ open: showHistory }" width="11" height="11" viewBox="0 0 11 11" fill="none">
-                  <path d="M2.5 4l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
+                <span class="history-count" v-if="conversationHistory.length">{{ conversationHistory.length }}</span>
               </button>
               <transition name="dropdown-pop">
-                <div v-if="showHistory" class="dropdown-card">
-                  <div v-if="conversationHistory.length" class="resource-list">
-                    <button v-for="(item, index) in conversationHistory" :key="item.id" type="button"
-                      class="chat-history-item" :class="{ active: currentConversationIndex === index }"
-                      @click="loadConversation(index)">
-                      <strong>{{ item.title }}</strong>
-                      <span>{{ item.time }}</span>
+                <div v-if="showHistory && conversationHistory.length > 0" class="dropdown-card history-panel">
+                  <div class="history-panel-header">
+                    <span class="history-panel-title">历史会话</span>
+                    <button class="clear-all-btn" @click="conversationHistory = []; showHistory = false; currentConversationIndex = -1; messages = []; hasStarted = false">
+                      清空全部
                     </button>
                   </div>
-                  <InfoState v-else title="还没有历史会话" description="发送一个问题后，这里会保留最近的工作上下文。"/>
+                  <div class="resource-list">
+                    <div v-for="(item, index) in conversationHistory" :key="item.id"
+                      class="chat-history-item" :class="{ active: currentConversationIndex === index }"
+                      @click="loadConversation(index)">
+                      <div class="chat-history-item__main">
+                        <strong>{{ item.title }}</strong>
+                        <span>{{ item.time }}</span>
+                      </div>
+                      <button class="chat-history-item__delete" @click="deleteConversation(index, $event)" title="删除此会话">
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                          <path d="M2 3h8M5 3V2h2v1M4.5 3v6M7.5 3v6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </transition>
             </div>
 
-            <!-- 引用与动作按钮 + 展开面板 -->
-            <div class="toolbar-dropdown">
+            <!-- 引用与动作（仅在对话开始后显示） -->
+            <div v-if="hasStarted" class="toolbar-dropdown">
               <button class="pill-btn" :class="{ active: showSources }" @click="showSources = !showSources; if(showSources) showHistory = false">
                 <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
                   <path d="M2 2.5h9M2 6.5h6M2 10.5h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
                 </svg>
                 引用与动作
-                <svg class="pill-chevron" :class="{ open: showSources }" width="11" height="11" viewBox="0 0 11 11" fill="none">
-                  <path d="M2.5 4l3 3 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
               </button>
               <transition name="dropdown-pop">
                 <div v-if="showSources" class="dropdown-card">
@@ -111,16 +108,28 @@
             </div>
 
             <!-- 新建会话按钮 -->
-            <button class="new-chat-btn" @click="createNewChat" title="新建会话">
+            <button v-if="hasStarted" class="new-chat-btn" @click="createNewChat" title="新建会话">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
               </svg>
             </button>
           </div>
 
-          <!-- Chat stream -->
+          <!-- Welcome header -->
+          <transition name="header-out">
+            <div v-if="!hasStarted" class="welcome-header">
+              <div class="glow-title-wrap"></div>
+            </div>
+          </transition>
+
+          <!-- Top spacer -->
+          <div class="top-spacer" :class="{ 'top-spacer--gone': hasStarted }"></div>
+
+          <!-- Chat stream + 右侧代码预览面板 -->
           <transition name="stream-in">
-            <div v-if="hasStarted" class="chat-stream-box" ref="streamRef">
+            <div v-if="hasStarted" class="chat-main-row">
+              <!-- 左侧：聊天消息流 -->
+              <div class="chat-stream-box" ref="streamRef">
               <transition name="card-in">
                 <div v-if="showPreviewCard" class="question-preview-card">
                   <div class="preview-icon">
@@ -146,8 +155,26 @@
                     <strong>{{ msg.role === 'user' ? '提问' : 'AI 回答' }}</strong>
                     <span>{{ msg.time }}</span>
                   </div>
+                  <!-- 工具调用卡片（智能体模式下显示在内容之前） -->
+                  <div v-if="msg.toolCalls && msg.toolCalls.length > 0" class="agent-calls-list">
+                    <AgentCallCard
+                      v-for="call in msg.toolCalls"
+                      :key="call.id"
+                      :title="call.title"
+                      :tool-name="call.tool"
+                      :status="call.status"
+                      :args="call.args"
+                      :result="call.result"
+                      :steps="call.steps || []"
+                    />
+                  </div>
                   <p class="chat-content">
-                    <span class="chat-text" :class="{ 'text-reveal': streamingIndex === index }" v-html="renderContent(msg.content || '')"></span>
+                    <span
+                      class="chat-text"
+                      :class="{ 'text-reveal': streamingIndex === index }"
+                      v-html="renderContent(msg.content || '')"
+                      @click="onRunnableCodeClick"
+                    ></span>
                     <span v-if="streamingIndex === index" class="typing-cursor"></span>
                   </p>
                 </div>
@@ -158,6 +185,63 @@
                 <p>AI 正在检索知识库并生成回答</p>
               </div>
             </div>
+
+            <!-- 右侧：代码运行结果面板 -->
+            <transition name="code-panel-slide">
+              <div v-if="activeCodePreview" class="code-preview-panel">
+                <div class="code-preview-panel__header">
+                  <div class="code-preview-panel__title">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <rect x="1" y="1" width="14" height="14" rx="3" stroke="currentColor" stroke-width="1.2"/>
+                      <path d="M5 5.5l-2 2.5 2 2.5M11 5.5l2 2.5-2 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>{{ activeCodePreview.htmlPreviewUrl ? 'HTML 预览' : (activeCodePreview.langLabel + ' 运行结果') }}</span>
+                  </div>
+                  <button class="code-preview-panel__close" @click="activeCodePreview = null" title="关闭">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                      <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                  </button>
+                </div>
+
+                <!-- HTML 预览：iframe 内嵌 -->
+                <iframe
+                  v-if="activeCodePreview.htmlPreviewUrl"
+                  :src="activeCodePreview.htmlPreviewUrl"
+                  class="code-preview-panel__iframe"
+                  sandbox="allow-scripts allow-same-origin"
+                  title="HTML Preview"
+                ></iframe>
+
+                <!-- Python/Java 输出区域 -->
+                <template v-else>
+                  <div class="code-preview-panel__code">
+                    <pre><code>{{ activeCodePreview.code }}</code></pre>
+                  </div>
+                  <div class="code-preview-panel__output"
+                    :class="{
+                      success: activeCodePreview.status === 'done' && activeCodePreview.success,
+                      error:   activeCodePreview.status === 'done' && !activeCodePreview.success,
+                      running: activeCodePreview.status === 'running'
+                    }">
+                    <div class="code-preview-panel__output-meta">
+                      <span class="code-preview-panel__status">
+                        <span v-if="activeCodePreview.status === 'running'">⏳ 正在执行...</span>
+                        <span v-else-if="activeCodePreview.success">✅ 执行成功</span>
+                        <span v-else>❌ 执行出错</span>
+                      </span>
+                      <span v-if="activeCodePreview.status !== 'running'" class="code-preview-panel__time">⏱ {{ activeCodePreview.executionTime }}s</span>
+                    </div>
+                    <pre v-if="activeCodePreview.status !== 'running' && activeCodePreview.stdout" class="code-preview-panel__stdout">{{ activeCodePreview.stdout }}</pre>
+                    <pre v-if="activeCodePreview.status !== 'running' && (activeCodePreview.stderr || activeCodePreview.error)" class="code-preview-panel__stderr">{{ activeCodePreview.stderr || activeCodePreview.error }}</pre>
+                    <div v-if="activeCodePreview.status !== 'running' && !activeCodePreview.stdout && !activeCodePreview.stderr && !activeCodePreview.error" class="code-preview-panel__empty">
+                      （无输出）
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </transition>
+          </div>
           </transition>
 
           <!-- Composer -->
@@ -249,15 +333,31 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref, onMounted } from 'vue'
-import { ragApi, agentApi } from '@/api'
+import { computed, nextTick, ref, onMounted, watch } from 'vue'
+import api, { ragApi, agentApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
+import { ElMessage } from 'element-plus'
 import InfoState from '@/components/ui/InfoState.vue'
+import AgentCallCard from '@/components/AgentCallCard.vue'
 
 const authStore = useAuthStore()
+const conversationHistory = ref([])
 
-// 页面加载时初始化 thumb 位置
+// 页面加载时初始化 thumb 位置 & 加载历史会话
 onMounted(() => {
+  // 加载历史会话
+  try {
+    const saved = localStorage.getItem('chat-conversation-history')
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      if (Array.isArray(parsed)) {
+        conversationHistory.value = parsed
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load conversation history:', e)
+  }
+
   nextTick(() => {
     setTimeout(() => {
       const activeIndex = modeOptions.findIndex(m => m.value === selectedMode.value)
@@ -265,6 +365,15 @@ onMounted(() => {
     }, 100)
   })
 })
+
+// 自动保存历史会话到 localStorage
+watch(conversationHistory, (val) => {
+  try {
+    localStorage.setItem('chat-conversation-history', JSON.stringify(val))
+  } catch (e) {
+    console.error('Failed to save conversation history:', e)
+  }
+}, { deep: true })
 
 // 加载保存的配置
 function loadAgentConfig() {
@@ -306,7 +415,6 @@ const showHistory = ref(false)
 const showSources = ref(false)
 const currentConversationIndex = ref(-1)
 const messages = ref([])
-const conversationHistory = ref([])
 const inputRef = ref(null)
 const streamRef = ref(null)
 const modeRefs = ref([])
@@ -315,6 +423,10 @@ const modeThumbW = ref(0)
 const lastQuestion = ref('')
 const showPreviewCard = ref(false)
 const streamingIndex = ref(-1) // 正在流式输出的消息索引
+
+// 追踪活跃工具调用（key 为消息索引）
+const agentCallsMap = ref({}) // { [msgIndex]: AgentCall[] }
+const activeToolCalls = ref([]) // 当前正在进行的工具调用列表
 
 // 文件上传相关
 const fileInputRef = ref(null)
@@ -395,8 +507,193 @@ function readFileAsBase64(file) {
 }
 
 // 获取文件的 MIME 类型
-// 渲染消息内容：支持 LaTeX 公式 + Markdown
+// 渲染消息内容：支持 LaTeX 公式 + Markdown + 可运行代码卡片
 import katex from 'katex'
+
+/** 支持运行的语言 */
+const RUNNABLE_LANGS = ['html', 'htm', 'python', 'java', 'py', 'java'] // py -> python
+
+const LANG_LABEL = {
+  html: 'HTML', htm: 'HTML',
+  python: 'Python', py: 'Python',
+  java: 'Java'
+}
+
+/** 判断语言是否需要后端执行（Python/Java） */
+function needsServerExecute(lang) {
+  const l = (lang || '').trim().toLowerCase()
+  return l === 'python' || l === 'py' || l === 'java'
+}
+
+/** 判断是否为可在浏览器中直接运行的完整 HTML 文档 */
+function isRunnableHtml(lang, raw) {
+  const trimmed = raw.trim()
+  const langLower = (lang || '').trim().toLowerCase()
+  if (langLower === 'html' || langLower === 'htm') return true
+  if (!langLower && /^(<!DOCTYPE|<html\b)/i.test(trimmed)) return true
+  return false
+}
+
+/** 通用构建代码卡片函数 */
+function buildRunnableCard(lang, raw, rawForPreview) {
+  const l = (lang || '').trim().toLowerCase()
+  const normalized = (l === 'py') ? 'python' : l
+  const label = LANG_LABEL[normalized] || lang.toUpperCase()
+  const isServer = needsServerExecute(normalized)
+
+  let b64 = ''
+  try {
+    b64 = btoa(unescape(encodeURIComponent(rawForPreview)))
+  } catch {
+    return `<pre class="code-block"><code>${raw}</code></pre>`
+  }
+
+  const runAction = isServer ? 'run-code' : 'preview-html'
+  const runTitle = isServer ? '在服务器上运行代码' : '在新窗口中运行预览'
+  const runBtnClass = isServer ? 'runnable-code-card__btn runnable-code-card__btn--run runnable-code-card__btn--server' : 'runnable-code-card__btn runnable-code-card__btn--run'
+
+  return (
+    `<div class="runnable-code-card" data-lang="${normalized}" data-preview-b64="${b64}">` +
+    `<pre class="code-block runnable-code-card__pre"><code>${raw}</code></pre>` +
+    `<div class="runnable-code-card__footer">` +
+    `<span class="runnable-code-card__lang-tag">${label}</span>` +
+    `<div class="runnable-code-card__actions">` +
+    `<button type="button" class="runnable-code-card__btn" data-action="copy-code" title="复制源代码">` +
+    `<svg class="runnable-code-card__icon" width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">` +
+    `<rect x="5" y="5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/>` +
+    `<path d="M3 11V4h7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>` +
+    `</svg>复制</button>` +
+    `<button type="button" class="${runBtnClass}" data-action="${runAction}" title="${runTitle}">` +
+    `<svg class="runnable-code-card__icon" width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">` +
+    `<path d="M5 3.5v9l7-4.5L5 3.5z"/>` +
+    `</svg>运行</button>` +
+    `</div></div>` +
+    `</div>`
+  )
+}
+
+/** 点击处理：复制、HTML 预览、Python/Java 执行 */
+const activeCodePreview = ref(null)
+
+async function handleCardAction(btn, card) {
+  const action = btn.getAttribute('data-action')
+  const lang = card.getAttribute('data-lang')
+  const b64 = card.getAttribute('data-preview-b64')
+
+  if (!b64) return
+  let raw = ''
+  try {
+    raw = decodeURIComponent(escape(window.atob(b64)))
+  } catch {
+    ElMessage.error('无法解析代码数据')
+    return
+  }
+
+  if (action === 'copy-code') {
+    const ok = await navigator.clipboard.writeText(raw).then(() => true, () => false)
+    ElMessage.success(ok ? '已复制到剪贴板' : '复制失败')
+    return
+  }
+
+  if (action === 'preview-html') {
+    // 生成 blob URL，在右侧面板 iframe 中内嵌预览
+    const blob = new Blob([raw], { type: 'text/html;charset=utf-8' })
+    const blobUrl = URL.createObjectURL(blob)
+    const l = (lang || '').trim().toLowerCase()
+    const langLabel = (l === 'htm' || l === 'html') ? 'HTML' : lang.toUpperCase()
+    activeCodePreview.value = {
+      langLabel,
+      code: raw,
+      htmlPreviewUrl: blobUrl,
+      success: true,
+      stdout: '',
+      stderr: '',
+      error: null,
+      executionTime: 0,
+      status: 'done'
+    }
+    return
+  }
+
+  if (action === 'run-code') {
+    const l = (lang || '').trim().toLowerCase()
+    const langLabel = LANG_LABEL[l === 'py' ? 'python' : l] || lang.toUpperCase()
+    activeCodePreview.value = {
+      langLabel,
+      code: raw,
+      htmlPreviewUrl: null,
+      success: false,
+      stdout: '',
+      stderr: '',
+      error: null,
+      executionTime: 0,
+      status: 'running'
+    }
+
+    btn.disabled = true
+    btn.textContent = '运行中...'
+    try {
+      const res = await api.code.execute({
+        code: raw,
+        language: l === 'py' ? 'python' : l,
+        timeout: 30
+      })
+      if (res && res.code === 200) {
+        const data = res.data || {}
+        activeCodePreview.value = {
+          langLabel,
+          code: raw,
+          htmlPreviewUrl: null,
+          success: !!data.success,
+          stdout: data.stdout || '',
+          stderr: data.stderr || '',
+          error: data.error || null,
+          executionTime: data.execution_time || 0,
+          status: 'done'
+        }
+      } else {
+        activeCodePreview.value = {
+          langLabel, code: raw,
+          htmlPreviewUrl: null,
+          success: false,
+          stdout: '',
+          stderr: '',
+          error: res?.message || '执行失败',
+          executionTime: 0,
+          status: 'done'
+        }
+        ElMessage.error(res?.message || '执行失败')
+      }
+    } catch (err) {
+      console.error('Code execution error:', err)
+      activeCodePreview.value = {
+        langLabel, code: raw,
+        htmlPreviewUrl: null,
+        success: false,
+        stdout: '',
+        stderr: '',
+        error: err?.message || '请求失败，请检查后端服务是否启动',
+        executionTime: 0,
+        status: 'done'
+      }
+      ElMessage.error('代码执行接口请求失败，请检查后端服务是否启动')
+    } finally {
+      btn.disabled = false
+      btn.innerHTML = `<svg class="runnable-code-card__icon" width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 3.5v9l7-4.5L5 3.5z"/></svg>运行`
+    }
+  }
+}
+
+function onRunnableCodeClick(e) {
+  const btn = e.target.closest('[data-action]')
+  if (!btn || !(btn instanceof HTMLElement)) return
+  const card = btn.closest('.runnable-code-card')
+  if (!card) return
+  e.preventDefault()
+  e.stopPropagation()
+  handleCardAction(btn, card)
+}
+
 function renderContent(text) {
   if (!text) return ''
   // 1. 处理 $$...$$ 块级公式（优先提取，防止被后续 Markdown 处理破坏）
@@ -411,19 +708,33 @@ function renderContent(text) {
   for (let i = blockMatches.length - 1; i >= 0; i--) {
     const match = blockMatches[i]
     try {
-      const html = katex.renderToString(match.latex.trim(), { displayMode: true, throwOnError: false })
+      katex.renderToString(match.latex.trim(), { displayMode: true, throwOnError: false })
       result = result.slice(0, match.index) + `\x00BLOCK_MATH_${i}\x00` + result.slice(match.index + match.raw.length)
     } catch (e) {
       result = result.slice(0, match.index) + match.raw + result.slice(match.index + match.raw.length)
     }
   }
-  // 2. HTML 转义（防止 XSS）
+  // 2. 提取 fenced 代码块（在全局转义之前保留原始 HTML，用于「运行」预览）
+  const codeBlocks = []
+  result = result.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    const raw = String(code).replace(/\r\n/g, '\n')
+    const id = codeBlocks.length
+    codeBlocks.push({ lang, raw })
+    return `\x00CODE_BLOCK_${id}\x00`
+  })
+  // 3. HTML 转义（防止 XSS）
   result = result.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  // 3. Markdown 处理
+  // 4. 还原代码块：可运行卡片包裹，其余为普通 pre
+  for (let i = 0; i < codeBlocks.length; i++) {
+    const { lang, raw } = codeBlocks[i]
+    const escaped = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const l = (lang || '').trim().toLowerCase()
+    const isRunnable = isRunnableHtml(lang, raw) || needsServerExecute(l)
+    const inner = isRunnable ? buildRunnableCard(l, escaped, raw) : `<pre class="code-block"><code>${escaped}</code></pre>`
+    result = result.replace(`\x00CODE_BLOCK_${i}\x00`, inner)
+  }
+  // 5. Markdown 处理（代码块已处理，不再匹配 ```）
   result = result
-    // 代码块 ```...```
-    .replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
-      `<pre class="code-block"><code>${code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`)
     // 行内代码
     .replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
     // 标题
@@ -536,6 +847,20 @@ function loadConversation(index) {
   const h = conversationHistory.value[index]
   messages.value = h ? [...h.messages] : []
   activeSources.value = h?.sources?.length ? h.sources : activeSources.value
+  hasStarted.value = true
+  showHistory.value = false
+}
+
+function deleteConversation(index, event) {
+  event.stopPropagation()
+  conversationHistory.value.splice(index, 1)
+  if (currentConversationIndex.value === index) {
+    currentConversationIndex.value = -1
+    messages.value = []
+    hasStarted.value = false
+  } else if (currentConversationIndex.value > index) {
+    currentConversationIndex.value--
+  }
 }
 
 function createNewChat() {
@@ -543,14 +868,14 @@ function createNewChat() {
   if (currentConversationIndex.value > -1 && messages.value.length > 0) {
     conversationHistory.value[currentConversationIndex.value].messages = [...messages.value]
   }
-  // 重置状态
+  // 重置状态（不清空历史列表）
   messages.value = []
-  conversationHistory.value = []
   currentConversationIndex.value = -1
   hasStarted.value = false
   showHistory.value = false
   showSources.value = false
   streamingIndex.value = -1
+  activeToolCalls.value = []
   activeSources.value = [
     { title: '引用来源将在这里显示', summary: '命中文档、知识块和建议动作会伴随回答一起出现。' }
   ]
@@ -598,8 +923,15 @@ async function sendMessage() {
     uploadedFiles.value = []
   }
   
-  // 额外提示（不再需要让AI读取文件）
-  const fileHint = filesData ? `\n\n【用户上传了 ${filesData.length} 个文件，请阅读后回答。】` : ''
+  // 额外提示 - 更明确地告知Agent文件已内嵌在消息中
+  let fileHint = ''
+  if (filesData && filesData.length > 0) {
+    const fileTypes = filesData.map(f => {
+      if (f.type.startsWith('image/')) return f.type.replace('image/', '').toUpperCase() + '图片'
+      return f.type.split('/').pop().toUpperCase() + '文档'
+    }).join('、')
+    fileHint = `\n\n【用户上传了 ${filesData.length} 个文件（${fileTypes}），这些文件的内容已经内嵌在上述消息中，请直接查看并回答。】`
+  }
 
   messages.value.push({ role: 'user', content: text, time: formatTime() })
   lastQuestion.value = text
@@ -625,7 +957,7 @@ async function sendMessage() {
   messages.value.push({ role: 'ai', content: '', time: formatTime() })
 
   try {
-    // 智能体模式
+    // 智能体模式 - 使用流式输出
     if (selectedMode.value === 'agent') {
       if (!selectedAgentId.value) {
         messages.value[aiMsgIndex].content = '请先选择一个智能体'
@@ -634,27 +966,112 @@ async function sendMessage() {
         return
       }
 
-      const res = await agentApi.chat({
-        agent_id: selectedAgentId.value,
+      // 【诊断】确认 filesData 是否正确
+      const _fd0len = filesData && filesData.length > 0 ? (filesData[0].data ? filesData[0].data.length : 0) : 0
+      console.log(`[Agent Chat] === 发送前诊断 ===`)
+      console.log(`[Agent Chat] filesData === null ? ${filesData === null}`)
+      console.log(`[Agent Chat] filesData.length = ${filesData ? filesData.length : 'N/A'}`)
+      console.log(`[Agent Chat] filesData[0].data length = ${_fd0len}`)
+      console.log(`[Agent Chat] message = "${(fullMessage + (fileHint || '')).slice(0, 80)}"`)
+      if (filesData && filesData.length > 0) {
+        console.log(`[Agent Chat] filesData[0].type = ${filesData[0].type}, filesData[0].data前20字 = "${filesData[0].data ? filesData[0].data.slice(0, 20) : 'N/A'}"`)
+      } else {
+        console.error('[Agent Chat] ⚠️ filesData 为空！uploadedFiles.value.length =', uploadedFiles.value.length)
+      }
+
+      const response = await agentApi.chatStream({
         message: fullMessage + (fileHint || ''),
         student_id: authStore.user?.id || 'guest',
         session_id: `agent_${selectedAgentId.value}_${Date.now()}`,
-        files: filesData
+        files: filesData,
+        model: agentConfig.model,
+        temperature: agentConfig.temperature / 100,
+        topP: agentConfig.topP / 100,
+        maxTokens: agentConfig.maxTokens,
+        frequencyPenalty: agentConfig.frequencyPenalty,
+        presencePenalty: agentConfig.presencePenalty,
+        use_memory: agentConfig.memoryEnabled !== false,
+        agent_type: agentConfig.agentType || 'tutor',
+        personality: agentConfig.personality || 'balanced',
+        custom_prompt: agentConfig.systemPrompt || ''
       })
 
-      if (res.code === 200) {
-        const responseText = res.data.response || '智能体没有返回内容'
-        messages.value[aiMsgIndex].content = responseText
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Agent stream response error:', response.status, errorText)
+        messages.value[aiMsgIndex].content = `请求失败 (${response.status})：请稍后重试`
+        isLoading.value = false
+        streamingIndex.value = -1
+        return
+      }
 
-        // 如果有工具调用日志，显示工具执行情况
-        if (res.data.tool_calls_log?.length) {
-          const toolInfo = res.data.tool_calls_log.map(t =>
-            `• ${t.tool}: ${t.result?.error || '成功'}`
-          ).join('\n')
-          messages.value[aiMsgIndex].content += `\n\n【工具调用】\n${toolInfo}`
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let fullResponse = ''
+
+      // 初始化该消息的工具调用追踪
+      activeToolCalls.value = []
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            if (data === '[DONE]') continue
+
+            try {
+              const parsed = JSON.parse(data)
+
+              if (parsed.type === 'tool_start') {
+                // 仅对子代理调用（delegate_task）创建卡片，普通工具调用忽略
+                if (parsed.tool === 'delegate_task') {
+                  const call = {
+                    id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                    tool: parsed.tool,
+                    title: '调用子代理',
+                    status: 'running',
+                    args: parsed.args,
+                    result: undefined,
+                    steps: []
+                  }
+                  activeToolCalls.value.push(call)
+                  if (!messages.value[aiMsgIndex].toolCalls) {
+                    messages.value[aiMsgIndex].toolCalls = []
+                  }
+                  messages.value[aiMsgIndex].toolCalls.push(call)
+                }
+              } else if (parsed.type === 'tool_end') {
+                // 仅更新子代理卡片的状态
+                const callIndex = activeToolCalls.value.findIndex(c => c.tool === parsed.tool)
+                if (callIndex >= 0) {
+                  const call = activeToolCalls.value[callIndex]
+                  const isError = parsed.result?.error
+                  call.status = isError ? 'error' : 'done'
+                  call.result = parsed.result
+                }
+              } else if (parsed.type === 'content') {
+                // AI 回复内容
+                fullResponse += parsed.content
+                messages.value[aiMsgIndex].content = fullResponse
+              } else if (parsed.type === 'done') {
+                // 完成
+              } else if (parsed.type === 'error') {
+                fullResponse += `\n⚠️ ${parsed.error}\n`
+                messages.value[aiMsgIndex].content = fullResponse
+              }
+            } catch (e) {
+              // 忽略解析错误
+            }
+          }
         }
-      } else {
-        messages.value[aiMsgIndex].content = res.message || '智能体响应失败'
+
+        await nextTick()
+        if (streamRef.value) streamRef.value.scrollTop = streamRef.value.scrollHeight
       }
 
       isLoading.value = false
@@ -664,6 +1081,7 @@ async function sendMessage() {
 
     // 普通模式（通用问答 / 知识库对话）
     // agentConfig 的滑块值是 0-100，API 需要 0-1 float 及 snake_case 命名
+    // 通用问答和知识库问答不需要 tools
     const response = await ragApi.chatStream({
       query: text,
       student_id: authStore.user?.id || 'guest',
@@ -674,8 +1092,8 @@ async function sendMessage() {
       topP: agentConfig.topP / 100,
       maxTokens: agentConfig.maxTokens,
       frequencyPenalty: agentConfig.frequencyPenalty,
-      presencePenalty: agentConfig.presencePenalty,
-      tools: agentConfig.tools
+      presencePenalty: agentConfig.presencePenalty
+      // 不传 tools，通用问答和知识库问答不需要工具调用
     })
 
     // 检查响应状态
@@ -891,6 +1309,7 @@ async function sendMessage() {
   height: 100%;
   overflow: hidden;
   flex: 1;
+  padding: 0 24px;
 }
 
 /* ── Shell ── */
@@ -901,6 +1320,15 @@ async function sendMessage() {
   min-height: 0;
   height: 100%;
   overflow: hidden;
+}
+
+/* ── 聊天主行（左侧消息 + 右侧预览面板并排） ── */
+.chat-main-row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  gap: 0;
 }
 
 /* ── Welcome header ── */
@@ -1021,17 +1449,16 @@ async function sendMessage() {
 
 /* ── Chat stream ── */
 .chat-stream-box {
-  max-width: 720px;
+  max-width: none;
   width: 100%;
-  margin: 0 auto;
-  margin-bottom: 16px;
+  margin: 0 0 16px 0;
+  padding: 20px 24px;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.02);
   backdrop-filter: blur(18px) saturate(1.4);
   -webkit-backdrop-filter: blur(18px) saturate(1.4);
   overflow-y: auto;
-  padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1605,8 +2032,9 @@ async function sendMessage() {
 .resource-list { display: flex; flex-direction: column; gap: 6px; }
 .chat-history-item {
   width: 100%;
-  display: grid;
-  gap: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   text-align: left;
   padding: 9px 11px;
   border-radius: 9px;
@@ -1616,12 +2044,108 @@ async function sendMessage() {
   transition: all var(--t-fast) ease;
   cursor: pointer;
 }
-.chat-history-item strong { color: var(--text-primary); font-size: 12px; }
-.chat-history-item span   { color: var(--text-muted); font-size: 11px; }
-.chat-history-item:hover  { background: rgba(255,255,255,0.04); border-color: var(--glass-border-hi); }
+.chat-history-item:hover { background: rgba(255,255,255,0.04); border-color: var(--glass-border-hi); }
 .chat-history-item.active {
   border-color: rgba(48,112,255,0.22);
   background: rgba(48,112,255,0.06);
+}
+
+.chat-history-item__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.chat-history-item__main strong {
+  color: var(--text-primary);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-history-item__main span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.chat-history-item__delete {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.3);
+  cursor: pointer;
+  opacity: 0.4;
+}
+.chat-history-item:hover .chat-history-item__delete { opacity: 1; }
+.chat-history-item__delete:hover {
+  background: rgba(239,68,68,0.15);
+  color: #f87171;
+}
+
+/* ── Top persistent bar ── */
+.top-persistent-bar {
+  display: flex;
+  align-items: center;
+  padding: 6px 16px;
+  gap: 8px;
+}
+
+.history-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: rgba(37,99,235,0.2);
+  color: #60a5fa;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* ── History panel ── */
+.history-panel {
+  min-width: 260px;
+  max-width: 320px;
+}
+
+.history-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.history-panel-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9ca3af;
+}
+
+.clear-all-btn {
+  background: transparent;
+  border: none;
+  color: rgba(248,113,113,0.7);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all var(--t-fast) ease;
+}
+.clear-all-btn:hover {
+  background: rgba(239,68,68,0.12);
+  color: #f87171;
 }
 
 /* ── Chip links ── */
@@ -1756,6 +2280,14 @@ async function sendMessage() {
 }
 .katex { font-size: 1.05em !important; }
 
+/* 工具调用卡片列表 */
+.agent-calls-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
 /* Markdown 渲染样式 */
 .chat-text h1, .chat-text h2, .chat-text h3 {
   margin: 10px 0 6px;
@@ -1793,5 +2325,310 @@ async function sendMessage() {
   font-family: 'Fira Code', 'Courier New', monospace;
   font-size: 0.85em;
   line-height: 1.5;
+}
+
+/* 可运行代码卡片 */
+.chat-text .runnable-code-card {
+  margin: 10px 0 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+  max-width: 100%;
+}
+.chat-text .runnable-code-card__pre {
+  margin: 0;
+  padding: 12px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 0.84em;
+  line-height: 1.55;
+  overflow-x: auto;
+  white-space: pre;
+}
+.chat-text .runnable-code-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.chat-text .runnable-code-card__lang-tag {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+}
+.chat-text .runnable-code-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.chat-text .runnable-code-card__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 999px;       /* 圆角矩形 */
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  white-space: nowrap;
+}
+.chat-text .runnable-code-card__btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.26);
+  transform: translateY(-1px);
+}
+.chat-text .runnable-code-card__btn:active {
+  transform: translateY(0);
+}
+.chat-text .runnable-code-card__btn--run {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.45), rgba(99, 102, 241, 0.45));
+  border-color: rgba(99, 102, 241, 0.55);
+  color: #fff;
+}
+.chat-text .runnable-code-card__btn--run:hover {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.6), rgba(99, 102, 241, 0.6));
+  border-color: rgba(99, 102, 241, 0.7);
+}
+.chat-text .runnable-code-card__btn--server {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.45), rgba(16, 185, 129, 0.45));
+  border-color: rgba(16, 185, 129, 0.55);
+  color: #fff;
+}
+.chat-text .runnable-code-card__btn--server:hover {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.6), rgba(16, 185, 129, 0.6));
+  border-color: rgba(16, 185, 129, 0.7);
+}
+.chat-text .runnable-code-card__icon {
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.code-preview-panel {
+  width: 380px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 10, 20, 0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  overflow: hidden;
+  height: 100%;
+}
+.code-preview-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+.code-preview-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+}
+.code-preview-panel__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.code-preview-panel__close:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 1);
+}
+.code-preview-panel__code {
+  flex-shrink: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(0, 0, 0, 0.2);
+}
+.code-preview-panel__code pre {
+  margin: 0;
+  padding: 10px 14px;
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 0.8em;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.75);
+  white-space: pre;
+}
+.code-preview-panel__output {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.code-preview-panel__output-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.code-preview-panel__output.success .code-preview-panel__output-meta {
+  background: rgba(34, 197, 94, 0.1);
+  color: #4ade80;
+}
+.code-preview-panel__output.error .code-preview-panel__output-meta {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+}
+.code-preview-panel__status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.code-preview-panel__time {
+  opacity: 0.7;
+  font-size: 11px;
+}
+.code-preview-panel__stdout {
+  margin: 0;
+  padding: 10px 14px;
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 0.82em;
+  line-height: 1.55;
+  color: #a5f3fc;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  flex: 1;
+}
+.code-preview-panel__stderr {
+  margin: 0;
+  padding: 10px 14px;
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 0.82em;
+  line-height: 1.55;
+  color: #fca5a5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: rgba(239, 68, 68, 0.06);
+  flex: 1;
+}
+.code-preview-panel__empty {
+  padding: 20px 14px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 12px;
+  font-style: italic;
+}
+.code-preview-panel__output[status="running"] .code-preview-panel__stdout {
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+}
+.code-preview-panel__output[status="running"] .code-preview-panel__stdout::before {
+  content: '⏳ 正在执行...';
+  display: block;
+}
+
+/* HTML 预览 iframe */
+.code-preview-panel__iframe {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: #fff;
+  border-radius: 0 0 16px 0;
+}
+
+/* 右侧面板滑入动画（纯 width 过渡，自然挤压左侧） */
+.code-panel-slide-enter-active,
+.code-panel-slide-leave-active {
+  transition: width 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+.code-panel-slide-enter-from,
+.code-panel-slide-leave-to {
+  width: 0 !important;
+}
+
+:global([data-theme="dark"]) .chat-text .runnable-code-card {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.35);
+}
+</style>
+
+<style>
+/* v-html 动态注入的按钮不受 scoped 影响，需要全局样式 */
+.runnable-code-card__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 999px !important;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s, box-shadow 0.15s;
+  white-space: nowrap;
+  font-family: inherit;
+  line-height: 1;
+}
+.runnable-code-card__btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.26);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+.runnable-code-card__btn:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+.runnable-code-card__btn--run {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.45), rgba(99, 102, 241, 0.45));
+  border-color: rgba(99, 102, 241, 0.55);
+  color: #fff;
+}
+.runnable-code-card__btn--run:hover {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.65), rgba(99, 102, 241, 0.65));
+  border-color: rgba(99, 102, 241, 0.7);
+}
+.runnable-code-card__btn--server {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.45), rgba(16, 185, 129, 0.45));
+  border-color: rgba(16, 185, 129, 0.55);
+  color: #fff;
+}
+.runnable-code-card__btn--server:hover {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.65), rgba(16, 185, 129, 0.65));
+  border-color: rgba(16, 185, 129, 0.7);
+}
+.runnable-code-card__btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+.runnable-code-card__icon {
+  flex-shrink: 0;
 }
 </style>

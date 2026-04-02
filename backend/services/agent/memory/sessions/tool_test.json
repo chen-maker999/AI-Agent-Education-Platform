@@ -1,0 +1,17 @@
+[
+  {
+    "id": "fe80f8e9-0c4f-43af-8372-d8d5433bc7a8",
+    "content": "用户: search for AI news\n助手: ## 🤖 Latest AI News & Developments\n\nHere are the most recent updates and headlines from the AI world:\n\n---\n\n### 🔥 **Top Headlines**\n\n| Source | Key Story |\n|--------|-----------|\n| **AI Magazine** | **OpenAI Secures $122 Billion Funding** — Setting OpenAI on a path to AI dominance |\n| **The New York Times** | **OpenAI Reaches AI Agreement with Defense Dept** — Pentagon collaboration marks decisive moment for AI in warfare |\n| **Reuters** | Latest AI breakthroughs, technology trends, regulation, and ethics updates |\n| **Mashable** | **Claude AI Discovers 22 Firefox Flaws** — AI tools are getting better at cybersecurity and can now identify vulnerabilities |\n\n---\n\n### 🚀 **Major Breakthroughs**\n\n1. **Google's AI Power Moves**\n   - Released **Bayesian** — An AI system that evolves in real-time\n   - Dropped **TurboQuant** for advanced processing\n   - New **Gemini update** brings powerful capabilities\n   - AI demand propelled Google to **1 GW milestone**\n\n2. **Anthropic's Claude Code Leak**\n   - Security incident at Anthropic raised questions about code safety\n\n3. **Blood Cell Analysis**\n   - Generative AI systems can now analyze blood cells with **greater accuracy than human experts**, detecting subtle signs of diseases\n\n4. **Wireless Vision System**\n   - MIT researchers developed AI that improves wireless vision systems to **see through obstructions** — robots can now detect hidden objects more accurately\n\n---\n\n### 💼 **Business & Industry Updates**\n\n- **Oracle** cutting thousands in latest layoff round as company ramps AI spending\n- **Nvidia's** extensive web of AI investments continues to expand\n- **OpenAI Raises $110 Billion** to fuel growth\n- Ethical considerations and regulatory developments remain prominent topics\n\n---\n\n### 📰 **Recommended Sources for AI News**\n\n| Source | URL |\n|--------|-----|\n| IEEE Spectrum AI | https://spectrum.ieee.org/topic/artificial-intelligence/ |\n| Reuters AI Section | https://www.reuters.com/technology/artificial-intelligence/ |\n| AI Magazine | https://aimagazine.com/ |\n| MIT AI News | https://news.mit.edu/topic/artificial-intelligence2 |\n| ScienceDaily AI | https://www.sciencedaily.com/news/computers_math/artificial_intelligence/ |\n| CNBC AI | https://www.cnbc.com/ai-artificial-intelligence/ |\n\n---\n\nWould you like me to search for more specific AI topics (e.g., generative AI, AI regulation, AI in healthcare, specific companies like OpenAI/Google/Anthropic)?",
+    "scope": "session",
+    "agent_id": null,
+    "user_id": null,
+    "session_id": "tool_test",
+    "created_at": "2026-04-02T02:10:22.598160",
+    "updated_at": "2026-04-02T02:10:22.598171",
+    "importance": 0.8,
+    "tags": [
+      "conversation"
+    ],
+    "metadata": {}
+  }
+]

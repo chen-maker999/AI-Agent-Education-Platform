@@ -1,0 +1,17 @@
+[
+  {
+    "id": "96145edb-77ad-4eb5-b5ea-cb568d918597",
+    "content": "用户: 解读\n\n【用户上传了 1 个文件，请阅读后回答。】\n助手: 您好！我看到您上传了文件，但需要您提供文件的具体名称或路径，我才能读取和解读它。\n\n请告诉我：\n1. **文件名是什么？** （例如：`document.pdf`、`code.py`、`data.csv` 等）\n2. 或者您可以直接说\"请读取我刚才上传的文件\"\n\n一旦您提供文件名，我将使用 `reading` 工具读取文件内容，并为您进行详细解读。",
+    "scope": "session",
+    "agent_id": null,
+    "user_id": null,
+    "session_id": "agent_1cd50d1d-f216-42ec-a9bc-5d9d0c68e3c2_1775118052291",
+    "created_at": "2026-04-02T08:21:07.624869",
+    "updated_at": "2026-04-02T08:21:07.624877",
+    "importance": 0.8,
+    "tags": [
+      "conversation"
+    ],
+    "metadata": {}
+  }
+]

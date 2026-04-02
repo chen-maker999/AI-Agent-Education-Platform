@@ -1,9 +1,35 @@
 import axios from 'axios'
 
+// 工具格式转换：将字符串数组转为字典数组
+// 后端 ChatRequest.tools 期望 [{id: "tool_name"}, ...] 格式
+// 普通问答和知识库问答不需要 tools，应传 null
+function _normalizeTools(tools) {
+  if (!tools || tools.length === 0) return null
+  // 如果是字符串数组，转为 {id: tool} 格式
+  if (typeof tools[0] === 'string') {
+    return tools.map(id => ({ id }))
+  }
+  // 如果已是字典数组，直接返回
+  if (typeof tools[0] === 'object') {
+    return tools
+  }
+  return null
+}
+
 const api = axios.create({
   baseURL: '/api/v1',
   timeout: 300000  // 300秒超时，支持文件上传和大图片AI处理
 })
+
+// ===== 代码执行 =====
+api.code = {
+  execute: (data) => api.post('/code/execute', {
+    code: data.code,
+    language: data.language,
+    timeout: data.timeout || 15,
+    stdin: data.stdin || null
+  })
+}
 
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('token')
@@ -161,10 +187,10 @@ export const ragApi = {
     session_id: data.session_id,
     mode: data.mode || 'general',
     context: data.context || {},
-    tools: data.tools || null
+    tools: _normalizeTools(data.tools)
   }),
 
-    // 流式对话
+  // 流式对话
   chatStream: (data) => {
     const token = localStorage.getItem('token')
 
@@ -185,7 +211,7 @@ export const ragApi = {
       max_tokens: data.maxTokens || 4096,
       frequency_penalty: data.frequencyPenalty !== undefined ? data.frequencyPenalty : 0,
       presence_penalty: data.presencePenalty !== undefined ? data.presencePenalty : 0,
-      tools: data.tools || null
+      tools: _normalizeTools(data.tools)
     }
 
     return fetch('/api/v1/chat/message/stream', {
@@ -293,26 +319,62 @@ export const reviewApi = {
 
 // Agent 智能体 API
 export const agentApi = {
+  // ===== 基础 CRUD =====
   // 获取智能体列表
   list: () => api.get('/agent'),
   // 获取单个智能体
   get: (agentId) => api.get(`/agent/${agentId}`),
-  // 创建智能体
+  // 创建智能体（同名则更新）
   create: (data) => api.post('/agent', data),
   // 更新智能体
   update: (agentId, data) => api.put(`/agent/${agentId}`, data),
   // 删除智能体
   delete: (agentId) => api.delete(`/agent/${agentId}`),
-  // 与智能体对话（支持 Function Calling）
+
+  // ===== 对话 =====
+  // 与智能体对话（自动使用最新 Agent）
   chat: (data) => api.post('/agent/chat', {
-    agent_id: data.agent_id,
     message: data.message,
     student_id: data.student_id || 'guest',
     session_id: data.session_id,
     files: data.files || null  // 支持多模态：[{type, data}]
   }),
+
+  // Agent 流式对话
+  chatStream: (data) => {
+    const token = localStorage.getItem('token')
+    return fetch('/api/v1/agent/chat/stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({
+        message: data.message,
+        student_id: data.student_id || 'guest',
+        session_id: data.session_id,
+        files: data.files || null,
+        model: data.model || 'kimi-k2.5',
+        temperature: data.temperature,
+        max_tokens: data.maxTokens || 4096,
+        top_p: data.topP || 0.9,
+        frequency_penalty: data.frequencyPenalty || 0,
+        presence_penalty: data.presencePenalty || 0,
+        use_memory: data.use_memory !== undefined ? data.use_memory : true,
+        agent_type: data.agent_type || 'tutor',
+        personality: data.personality || 'balanced',
+        custom_prompt: data.custom_prompt || ''
+      })
+    })
+  },
+
+  // ===== 工具相关 =====
   // 获取内置工具列表
   listTools: () => api.get('/agent/tools/list'),
+  // 获取所有可用工具
+  getAvailableTools: () => api.get('/agent/tools/available'),
+  // 获取指定类型的工具权限
+  getToolPermissions: (agentType) => api.get(`/agent/tools/permissions/${agentType}`),
   // 上传文件到 Agent 工作区
   uploadFile: (sessionId, file) => {
     const formData = new FormData()
@@ -322,7 +384,58 @@ export const agentApi = {
     })
   },
   // 列出会话已上传的文件
-  listFiles: (sessionId) => api.get(`/agent/tools/files/${sessionId}`)
+  listFiles: (sessionId) => api.get(`/agent/tools/files/${sessionId}`),
+  // 知识库检索
+  knowledgeSearch: (data) => api.post('/agent/tools/knowledge_search', {
+    query: data.query,
+    limit: data.limit || 5,
+    course_id: data.course_id
+  }),
+  // Tavily 搜索
+  tavilySearch: (data) => api.post('/agent/tools/tavily_search', {
+    query: data.query,
+    max_results: data.max_results || 5
+  }),
+  // 阅读工具
+  readTool: (data) => api.post('/agent/tools/read', {
+    file_path: data.file_path,
+    start_line: data.start_line,
+    end_line: data.end_line
+  }),
+  // 编辑工具
+  editTool: (data) => api.post('/agent/tools/edit', {
+    file_path: data.file_path,
+    action: data.action,  // 'create' | 'update' | 'delete'
+    content: data.content,
+    path: data.path
+  }),
+
+  // ===== Agent 类型 =====
+  // 获取 Agent 类型列表
+  getTypes: () => api.get('/agent/types/list'),
+
+  // ===== 记忆管理 =====
+  // 获取会话记忆
+  getMemory: (sessionId) => api.get(`/agent/memory/${sessionId}`),
+  // 添加记忆
+  addMemory: (sessionId, data) => api.post(`/agent/memory/${sessionId}`, {
+    content: data.content,
+    importance: data.importance || 1.0,
+    tags: data.tags || ''
+  }),
+  // 清除会话记忆
+  clearMemory: (sessionId) => api.delete(`/agent/memory/${sessionId}`),
+
+  // ===== 钩子 =====
+  // 获取可用钩子
+  getHooks: () => api.get('/agent/hooks'),
+
+  // ===== 任务 =====
+  // 获取任务列表
+  getTasks: () => api.get('/agent/tasks'),
+  // 获取任务状态
+  getTaskStatus: (taskId) => api.get(`/agent/tasks/${taskId}`),
+
 }
 
 export default api

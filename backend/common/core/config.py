@@ -129,6 +129,9 @@ class Settings(BaseSettings):
     KIMI_MODEL: str = "kimi-k2.5"
     KIMI_TIMEOUT: int = 30
 
+    # Tavily API (网络搜索)
+    TAVILY_API_KEY: Optional[str] = None
+
     # Elasticsearch
     ELASTICSEARCH_HOST: str = "localhost"
     ELASTICSEARCH_PORT: int = 9200

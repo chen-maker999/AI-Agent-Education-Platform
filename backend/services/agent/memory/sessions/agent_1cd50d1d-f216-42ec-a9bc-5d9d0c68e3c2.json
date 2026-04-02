@@ -1,0 +1,17 @@
+[
+  {
+    "id": "7ab757d5-c8f0-43dd-b5ee-9f2770d203b9",
+    "content": "本会话使用了工具: tavily_search",
+    "scope": "session",
+    "agent_id": null,
+    "user_id": null,
+    "session_id": "agent_1cd50d1d-f216-42ec-a9bc-5d9d0c68e3c2",
+    "created_at": "2026-04-01T23:59:37.896711",
+    "updated_at": "2026-04-01T23:59:37.896719",
+    "importance": 0.5,
+    "tags": [
+      "tool_usage"
+    ],
+    "metadata": {}
+  }
+]

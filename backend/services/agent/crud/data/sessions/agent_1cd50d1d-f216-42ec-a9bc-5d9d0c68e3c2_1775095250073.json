@@ -1,0 +1,12 @@
+[
+  {
+    "role": "user",
+    "content": "claude在github上的源代码链接",
+    "time": "2026-04-02T02:00:50.090877"
+  },
+  {
+    "role": "assistant",
+    "content": "根据搜索结果，Claude在GitHub上的主要源代码链接如下：\n\n## 🔗 官方GitHub仓库\n\n### 1. Anthropic 官方组织\n**链接**: https://github.com/anthropics\n- 这是Anthropic公司的官方GitHub主页，包含所有开源项目\n\n### 2. Claude Code 主仓库 ⭐ (推荐)\n**链接**: https://github.com/anthropics/claude-code\n- ⭐ **95k+ Stars** | 🍴 **13.8k Forks**\n- 这是 **Claude Code** 的官方开源仓库\n- Claude Code 是一个智能编码工具，运行在终端中，可以理解和帮助处理代码库\n- 主要语言：\n  - Shell (47.1%)\n  - Python (29.2%)\n  - TypeScript (17.7%)\n  - PowerShell (4.1%)\n  - Dockerfile (1.9%)\n\n### 3. Claude Code GitHub Action\n**链接**: https://github.com/anthropics/claude-code-action\n- 用于GitHub PR和Issues的Claude Code自动化Action\n\n---\n\n## 📌 注意事项\n\n**Claude AI模型本身**（如Claude 3.5 Sonnet、Claude 4等）的源代码是**不开源的**，Anthropic仅开源了相关工具和SDK。\n\n上述 `claude-code` 仓库是Claude的**终端编码工具**的源代码，不是底层AI模型的源代码。",
+    "time": "2026-04-02T02:01:40.373633"
+  }
+]

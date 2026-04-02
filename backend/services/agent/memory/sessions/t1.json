@@ -1,0 +1,17 @@
+[
+  {
+    "id": "ee470573-c14d-4551-becd-57ce4510443c",
+    "content": "用户: say hi\n助手: Hello! 👋\n\nI'm your code search and exploration expert. I'm here to help you:\n\n- 🔍 **Search** through codebases to find relevant files and functions\n- 📊 **Analyze** code structure, dependencies, and logic\n- 🔬 **Investigate** complex issues and trace code paths\n- 📋 **Provide** detailed code analysis and reports\n\n**How can I help you today?** \n\nFor example, you could ask me to:\n- Find where a specific function is defined\n- Analyze how a feature is implemented\n- Search for configuration files\n- Investigate error handling in the codebase\n- And much more!\n\nJust let me know what you're looking for! 😊",
+    "scope": "session",
+    "agent_id": null,
+    "user_id": null,
+    "session_id": "t1",
+    "created_at": "2026-04-02T02:09:20.897538",
+    "updated_at": "2026-04-02T02:09:20.897551",
+    "importance": 0.8,
+    "tags": [
+      "conversation"
+    ],
+    "metadata": {}
+  }
+]

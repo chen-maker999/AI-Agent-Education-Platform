@@ -185,127 +185,7 @@ async def tool_preview(req: PreviewRequest):
     raise HTTPException(status_code=400, detail="请提供 url 或 html")
 
 
-# ---------- 5. 联网搜索 ----------
-class WebSearchRequest(BaseModel):
-    query: str = Field(..., description="搜索关键词")
-    max_results: int = Field(10, ge=1, le=20, description="最多返回条数")
-
-
-@router.post("/web_search", response_model=ResponseModel)
-async def tool_web_search(req: WebSearchRequest):
-    """搜索和用户任务相关的网页内容"""
-    try:
-        results = []
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        }
-
-        # 优先尝试 DuckDuckGo
-        try:
-            url = "https://api.duckduckgo.com/"
-            params = {"q": req.query, "format": "json", "no_html": 1}
-            async with httpx.AsyncClient(timeout=8.0) as client:
-                r = await client.get(url, params=params, headers=headers)
-                r.raise_for_status()
-                data = r.json()
-
-            # 即时答案
-            if data.get("AbstractText"):
-                results.append({
-                    "title": data.get("Heading", "摘要"),
-                    "link": data.get("AbstractURL", ""),
-                    "snippet": data.get("AbstractText", ""),
-                })
-
-            # 相关主题
-            for topic in (data.get("RelatedTopics") or [])[: req.max_results - len(results)]:
-                if isinstance(topic, dict) and topic.get("Text"):
-                    results.append({
-                        "title": topic.get("Text", "")[:80],
-                        "link": topic.get("FirstURL", ""),
-                        "snippet": topic.get("Text", ""),
-                    })
-                elif isinstance(topic, dict) and topic.get("Topics"):
-                    for t in topic["Topics"][:2]:
-                        if t.get("Text"):
-                            results.append({
-                                "title": t.get("Text", "")[:80],
-                                "link": t.get("FirstURL", ""),
-                                "snippet": t.get("Text", ""),
-                            })
-                            if len(results) >= req.max_results:
-                                break
-                if len(results) >= req.max_results:
-                    break
-
-        except Exception:
-            # DuckDuckGo 不可用，尝试 Bing
-            try:
-                from bs4 import BeautifulSoup
-                from urllib.parse import quote
-
-                search_url = f"https://cn.bing.com/search?q={quote(req.query)}"
-                async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-                    r = await client.get(search_url, headers=headers)
-                    r.raise_for_status()
-
-                soup = BeautifulSoup(r.text, 'html.parser')
-
-                # 提取搜索结果
-                for item in soup.select('.b_algo')[:req.max_results]:
-                    title_elem = item.select_one('h2 a')
-                    snippet_elem = item.select_one('.b_caption p')
-                    if title_elem:
-                        title = title_elem.get_text(strip=True)
-                        link = title_elem.get('href', '')
-                        snippet = ""
-                        if snippet_elem:
-                            snippet = snippet_elem.get_text(strip=True)
-                        results.append({
-                            "title": title,
-                            "link": link,
-                            "snippet": snippet[:200] if snippet else "",
-                        })
-
-            except Exception:
-                pass
-
-        if not results:
-            results.append({
-                "title": "未找到结果",
-                "link": "",
-                "snippet": f"对「{req.query}」的搜索暂无结果。",
-            })
-
-        return ResponseModel(
-            code=200,
-            message="success",
-            data={"query": req.query, "results": results[: req.max_results]},
-        )
-
-    except Exception as e:
-        # 降级：返回提示信息
-        return ResponseModel(
-            code=200,
-            message="success",
-            data={
-                "query": req.query,
-                "results": [
-                    {
-                        "title": "联网搜索暂时不可用",
-                        "link": "",
-                        "snippet": f"请求外部搜索时出错: {str(e)}。请检查网络或稍后重试。",
-                    }
-                ],
-            },
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ---------- 6. 下载资料到知识库 ----------
+# ---------- 5. 下载资料到知识库 ----------
 class DownloadToKnowledgeRequest(BaseModel):
     url: str = Field(..., description="要下载的 URL（支持 PDF、网页、文档链接）")
     filename: str = Field(..., description="保存到知识库的文件名（不含扩展名）")
@@ -470,7 +350,7 @@ async def tool_download_to_knowledge(req: DownloadToKnowledgeRequest):
         )
 
 
-# ---------- 7. 知识库检索 ----------
+# ---------- 6. 知识库检索 ----------
 class KnowledgeSearchRequest(BaseModel):
     query: str = Field(..., description="搜索查询词")
     top_k: int = Field(5, ge=1, le=20, description="返回结果数量")
@@ -536,6 +416,81 @@ async def tool_knowledge_search(req: KnowledgeSearchRequest):
         )
 
 
+# ---------- 7. Tavily 搜索 ----------
+class TavilySearchRequest(BaseModel):
+    query: str = Field(..., description="搜索关键词，尽量使用完整的问句")
+    max_results: int = Field(5, ge=1, le=10, description="最大返回结果数")
+
+
+@router.post("/tavily_search", response_model=ResponseModel)
+async def tool_tavily_search(req: TavilySearchRequest):
+    """
+    使用 Tavily API 进行深度网络搜索
+
+    Tavily 是一个专为 AI 设计的搜索 API，提供更准确、更全面的搜索结果。
+    适用于搜索最新信息、新闻、技术文档等。
+    """
+    import sys
+    import traceback
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+    from common.integration.tavily import tavily_search
+
+    print(f"[DEBUG tavily_search] query={req.query}, max_results={req.max_results}", flush=True)
+
+    try:
+        result = await tavily_search(
+            query=req.query,
+            max_results=req.max_results
+        )
+
+        print(f"[DEBUG tavily_search] result success={result.get('success')}, error={result.get('error')}", flush=True)
+
+        if not result.get("success"):
+            return ResponseModel(
+                code=200,
+                message="success",
+                data={
+                    "query": req.query,
+                    "results": [],
+                    "error": result.get("error", "Unknown error")
+                }
+            )
+
+        # 格式化结果
+        formatted_results = []
+        for i, r in enumerate(result.get("results", [])):
+            formatted_results.append({
+                "rank": i + 1,
+                "title": r.get("title", ""),
+                "url": r.get("url", ""),
+                "content": r.get("content", ""),
+                "score": r.get("score", 0.0),
+                "published_date": r.get("published_date")
+            })
+
+        return ResponseModel(
+            code=200,
+            message="success",
+            data={
+                "query": req.query,
+                "answer": result.get("answer"),
+                "results": formatted_results,
+                "total_results": len(formatted_results),
+                "response_time": result.get("response_time", 0)
+            }
+        )
+
+    except Exception as e:
+        import traceback
+        print(f"[ERROR tavily_search] {traceback.format_exc()}", flush=True)
+        return ResponseModel(
+            code=500,
+            message=f"Tavily搜索失败: {str(e)}",
+            data={"query": req.query, "results": []}
+        )
+
+
 @router.get("/list", response_model=ResponseModel)
 async def list_builtin_tools():
     """返回内置工具列表（供前端默认勾选）"""
@@ -544,7 +499,7 @@ async def list_builtin_tools():
         {"id": "editing", "name": "编辑", "desc": "对文件进行增删和编辑"},
         {"id": "terminal", "name": "终端", "desc": "在终端运行命令并获取状态和结果"},
         {"id": "preview", "name": "预览", "desc": "在生成前端结果后提供预览入口"},
-        {"id": "web_search", "name": "联网搜索", "desc": "搜索和用户任务相关的网页内容"},
+        {"id": "tavily_search", "name": "Tavily搜索", "desc": "使用 Tavily API 进行深度网络搜索"},
         {"id": "download_to_knowledge", "name": "下载资料", "desc": "从网上下载资料（PDF、网页）并保存到知识库"},
         {"id": "knowledge_search", "name": "知识库检索", "desc": "搜索知识库中的相关资料"},
     ]

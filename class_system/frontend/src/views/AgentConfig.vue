@@ -210,19 +210,33 @@
             </svg>
             基础设置
           </h3>
-          <div class="config-item full">
-            <label>系统提示词</label>
-            <textarea
-              v-model="config.full.systemPrompt"
-              placeholder="定义 Agent 的角色、行为规范和特殊能力..."
-              rows="5"
-            ></textarea>
-            <div class="char-count">{{ config.full.systemPrompt.length }} / 4000</div>
+          <div class="config-item">
+            <label>Agent 角色</label>
+            <div class="prompt-preset-grid">
+              <div
+                v-for="preset in promptPresets"
+                :key="preset.id"
+                class="prompt-preset-card"
+                :class="{ active: config.full.agentType === preset.id }"
+                @click="selectPromptPreset(preset)"
+              >
+                <div class="prompt-preset-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path v-if="preset.id === 'tutor'" d="M12 14l9-5-9-5-9 5 9 5zM12 14v7"/>
+                    <path v-if="preset.id === 'grader'" d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    <path v-if="preset.id === 'general'" d="M12 2l2 4h4l-3 3 1 5-4-3-4 3 1-5-3-3h4z"/>
+                    <path v-if="preset.id === 'explorer'" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    <path v-if="preset.id === 'planner'" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                    <path v-if="preset.id === 'verifier'" d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+                    <path v-if="preset.id === 'custom'" d="M12 2l2 4h4l-3 3 1 5-4-3-4 3 1-5-3-3h4z"/>
+                  </svg>
+                </div>
+                <span class="prompt-preset-name">{{ preset.name }}</span>
+                <span class="prompt-preset-desc">{{ preset.desc }}</span>
+              </div>
+            </div>
           </div>
           <div class="config-row">
-            <div class="config-item">
-              <MacSelect v-model="config.full.role" label="Agent 角色" :options="fullRoleOptions" />
-            </div>
             <div class="config-item">
               <MacSelect v-model="config.full.personality" label="性格倾向" :options="fullPersonalityOptions" />
             </div>
@@ -362,6 +376,63 @@
           </div>
         </div>
 
+        <!-- 记忆管理 -->
+        <div id="ac-f-memory" class="panel-section">
+          <h3 class="panel-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 2a9 9 0 0 1 9 9c0 3.6-2.1 6.7-5 8.1V22H8v-2.9C5.1 17.7 3 14.6 3 11a9 9 0 0 1 9-9z"/>
+              <path d="M12 2v4M8 6l-2-2M16 6l2-2"/>
+            </svg>
+            记忆管理
+          </h3>
+
+          <div class="config-item">
+            <label class="toggle-label">
+              <span>启用记忆</span>
+              <div class="toggle-switch">
+                <input type="checkbox" v-model="config.full.memoryEnabled">
+                <div class="toggle-thumb" :class="{ on: config.full.memoryEnabled }"></div>
+              </div>
+            </label>
+            <p class="config-hint">开启后 Agent 将在对话中保留和复用重要信息</p>
+          </div>
+
+          <div v-if="config.full.memoryEnabled" class="config-group">
+            <div class="config-item">
+              <label>记忆范围</label>
+              <div class="scope-grid">
+                <div
+                  v-for="scope in memoryScopeOptions"
+                  :key="scope.value"
+                  class="scope-card"
+                  :class="{ active: config.full.memoryScope === scope.value }"
+                  @click="config.full.memoryScope = scope.value"
+                >
+                  <span class="scope-name">{{ scope.label }}</span>
+                  <span class="scope-desc">{{ scope.desc }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="config-item">
+              <label>最大记忆条数</label>
+              <div class="slider-row">
+                <input type="range" min="5" max="50" step="5" v-model="config.full.memoryMaxEntries">
+                <span class="value">{{ config.full.memoryMaxEntries }} 条</span>
+              </div>
+            </div>
+
+            <div class="config-item">
+              <label>重要性阈值</label>
+              <p class="config-hint">只保留重要性≥阈值的记忆，低于阈值的会被自动清理</p>
+              <div class="slider-row">
+                <input type="range" min="0" max="100" step="10" v-model.number="config.full.memoryImportanceThreshold">
+                <span class="value">{{ (config.full.memoryImportanceThreshold * 100).toFixed(0) }}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 工具权限 -->
         <div id="ac-f-tools" class="panel-section">
           <h3 class="panel-title">
@@ -381,7 +452,7 @@
                 <div class="tool-icon-wrap">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path v-if="tool.id === 'knowledge_search'" d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35"/>
-                    <path v-else-if="tool.id === 'web_search'" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    <path v-else-if="tool.id === 'tavily_search'" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                     <path v-else-if="tool.id === 'download_to_knowledge'" d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
                     <path v-else-if="tool.id === 'reading'" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6"/>
                     <path v-else-if="tool.id === 'editing'" d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
@@ -446,36 +517,6 @@
         </div>
 
         <!-- 快捷操作 -->
-        <div id="ac-f-presets" class="panel-section">
-          <h3 class="panel-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
-            </svg>
-            预设配置
-          </h3>
-          <div class="presets-grid">
-            <div
-              v-for="preset in presets"
-              :key="preset.id"
-              class="preset-card"
-              :class="{ active: activePreset === preset.id }"
-              @click="applyPreset(preset)"
-            >
-              <div class="preset-icon-wrap">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <circle v-if="preset.id === 'default'" cx="12" cy="12" r="3"/>
-                  <path v-if="preset.id === 'default'" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                  <path v-else-if="preset.id === 'academic'" d="M22 10v6M2 10l10-5 10 5-10 5zM6 12v5c3 3 9 3 12 0v-5"/>
-                  <path v-else-if="preset.id === 'creative'" d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                  <path v-else d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zM8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/>
-                </svg>
-              </div>
-              <span class="preset-name">{{ preset.name }}</span>
-              <span class="preset-desc">{{ preset.desc }}</span>
-            </div>
-          </div>
-        </div>
-
         <div class="action-bar">
           <button class="btn btn--secondary" @click="resetFull">恢复默认</button>
           <button class="btn btn--primary" @click="saveFull">保存配置</button>
@@ -499,13 +540,23 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import MacSelect from '@/components/ui/MacSelect.vue'
 
-const fullRoleOptions = [
-  { value: 'tutor', label: '课程导师' },
-  { value: 'helper', label: '学习助手' },
-  { value: 'critic', label: '批评者' },
-  { value: 'explainer', label: '解释者' },
-  { value: 'custom', label: '自定义' }
+const promptPresets = [
+  { id: 'tutor', name: '课程导师', desc: '专注知识讲解与答疑，适合学习辅导', icon: 'tutor' },
+  { id: 'grader', name: '作业批改', desc: '自动批改作业，提供详细反馈', icon: 'grader' },
+  { id: 'general', name: '通用助手', desc: '处理各种请求，综合解决方案', icon: 'general' },
+  { id: 'explorer', name: '代码探索', desc: '代码搜索分析，只读模式', icon: 'explorer' },
+  { id: 'planner', name: '架构规划', desc: '需求分析，架构设计', icon: 'planner' },
+  { id: 'verifier', name: '实现验证', desc: '验证实现是否符合需求', icon: 'verifier' },
+  { id: 'custom', name: '自定义', desc: '使用空白模板自定义提示词', icon: 'custom' }
 ]
+
+function selectPromptPreset(preset) {
+  config.value.full.agentType = preset.id
+  if (preset.id !== 'custom') {
+    // 选择预设时清空自定义 prompt
+    config.value.full.systemPrompt = ''
+  }
+}
 
 const fullPersonalityOptions = [
   { value: 'formal', label: '严谨正式' },
@@ -535,6 +586,13 @@ const ragModeOptions = [
   { value: 'hybrid', label: '混合模式' }
 ]
 
+const memoryScopeOptions = [
+  { value: 'session', label: '会话级别', desc: '仅在当前会话中保留记忆，会话结束后自动清除' },
+  { value: 'agent', label: 'Agent 持久化', desc: 'Agent 级别的持久记忆，跨会话保留' },
+  { value: 'user', label: '用户级别', desc: '用户全局记忆，所有 Agent 共享' },
+  { value: 'project', label: '项目级别', desc: '当前项目的记忆，仅在该项目中生效' }
+]
+
 // 模式
 const configMode = ref('simple')
 const mainScrollEl = ref(null)
@@ -557,10 +615,10 @@ const navItems = computed(() => {
   return [
     { id: 'ac-f-base', idx: '01', label: '基础设置' },
     { id: 'ac-f-model', idx: '02', label: '模型参数' },
-    { id: 'ac-f-rag', idx: '03', label: 'RAG 检索' },
-    { id: 'ac-f-tools', idx: '04', label: '工具权限' },
-    { id: 'ac-f-security', idx: '05', label: '安全边界' },
-    { id: 'ac-f-presets', idx: '06', label: '预设配置' }
+    { id: 'ac-f-memory', idx: '03', label: '记忆管理' },
+    { id: 'ac-f-rag', idx: '04', label: 'RAG 检索' },
+    { id: 'ac-f-tools', idx: '05', label: '工具权限' },
+    { id: 'ac-f-security', idx: '06', label: '安全边界' }
   ]
 })
 
@@ -590,22 +648,13 @@ const simpleRoles = [
 // 注意：reading 和 editing 工具只允许访问用户在对话中上传的文件，不允许访问工作区或项目文件
 const tools = [
   { id: 'knowledge_search', name: '知识库检索', desc: '搜索知识库中的相关资料，当询问需要查找资料、解释概念时使用' },
-  { id: 'web_search', name: '联网搜索', desc: '搜索和用户任务相关的网页内容，获取最新信息' },
+  { id: 'tavily_search', name: 'Tavily搜索', desc: '使用 Tavily API 进行深度网络搜索，获取最新信息' },
   { id: 'download_to_knowledge', name: '下载资料', desc: '从网上下载PDF、网页并保存到知识库' },
   { id: 'reading', name: '读取上传文件', desc: '读取用户在对话中上传的文件内容' },
   { id: 'editing', name: '编辑上传文件', desc: '修改用户在对话中上传的文件内容' },
   { id: 'terminal', name: '终端命令', desc: '执行终端命令，如运行代码、安装依赖等' },
   { id: 'preview', name: '结果预览', desc: '生成HTML、图表等可视化结果的预览' }
 ]
-
-// 预设配置
-const presets = [
-  { id: 'default', name: '默认配置', desc: '开箱即用的标准配置' },
-  { id: 'academic', name: '学术模式', desc: '严谨学术风格回答' },
-  { id: 'creative', name: '创意模式', desc: '开放创意的发散思维' },
-  { id: 'beginner', name: '入门模式', desc: '适合初学者的简单解释' }
-]
-const activePreset = ref('default')
 
 // 配置数据
 const config = ref({
@@ -617,14 +666,18 @@ const config = ref({
     safetyLevel: 'balanced'
   },
   full: {
-    systemPrompt: '你是一个教育 AI 助手，专注于帮助学生理解和掌握知识。你应该友好、耐心地回答问题，并根据学生的水平调整解释的深度。',
-    role: 'tutor',
+    agentType: 'tutor',
+    systemPrompt: '',
     personality: 'balanced',
     model: 'kimi-k2.5',
     enableRag: true,
     ragMode: 'hybrid',
     topK: 5,
     similarityThreshold: 70,
+    memoryEnabled: true,
+    memoryScope: 'session',
+    memoryMaxEntries: 20,
+    memoryImportanceThreshold: 0.5,
     tools: ['search', 'calculator'],
     safetyLevel: 50,
     allowedDomains: '',
@@ -637,29 +690,6 @@ const config = ref({
     presencePenalty: 0
   }
 })
-
-// 应用预设
-function applyPreset(preset) {
-  activePreset.value = preset.id
-  if (preset.id === 'default') {
-    config.value.full.temperature = 30
-    config.value.full.systemPrompt = '你是一个教育 AI 助手，专注于帮助学生理解和掌握知识。'
-    config.value.full.verbosity = 'normal'
-  } else if (preset.id === 'academic') {
-    config.value.full.temperature = 20
-    config.value.full.systemPrompt = '你是一个严谨的学术导师，强调逻辑严密、引用权威来源、提供深度分析。'
-    config.value.full.verbosity = 'detailed'
-  } else if (preset.id === 'creative') {
-    config.value.full.temperature = 80
-    config.value.full.systemPrompt = '你是一个富有创意和想象力的学习伙伴，鼓励发散思维，提供多样化的解决方案。'
-    config.value.full.verbosity = 'normal'
-  } else if (preset.id === 'beginner') {
-    config.value.full.temperature = 25
-    config.value.full.systemPrompt = '你是一个耐心的启蒙老师，用简单生动的语言解释复杂概念，多用比喻和实例。'
-    config.value.full.verbosity = 'detailed'
-  }
-  showToastMessage('已应用预设配置', 'success')
-}
 
 // 重置和保存
 function resetSimple() {
@@ -727,7 +757,7 @@ function mapSimpleToFull(simpleConfig) {
     ragMode: 'hybrid',
     topK: simpleConfig.verbosity === 'detailed' ? 8 : simpleConfig.verbosity === 'brief' ? 3 : 5,
     similarityThreshold: 70,
-    tools: ['knowledge_search', 'web_search'],
+    tools: ['knowledge_search', 'tavily_search'],
     safetyLevel: safetyLevelMapping[simpleConfig.safetyLevel] || 50,
     allowedDomains: '',
     allowCodeExecution: false,
@@ -1098,6 +1128,13 @@ loadConfig()
   font-weight: 500;
   color: #6e6e73;
   margin-bottom: 8px;
+}
+
+.config-hint {
+  font-size: 12px;
+  color: #9ca3af;
+  margin: 4px 0 8px;
+  line-height: 1.5;
 }
 
 .config-item input[type="text"],
@@ -1534,6 +1571,130 @@ loadConfig()
 
 .toggle input:checked + .toggle__slider::before {
   transform: translateX(20px);
+}
+
+/* Toggle Switch variant */
+.toggle-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+.toggle-thumb {
+  position: absolute;
+  inset: 0;
+  background: #d2d2d7;
+  border-radius: 12px;
+  transition: 0.3s;
+  cursor: pointer;
+}
+.toggle-thumb::before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 2px;
+  bottom: 2px;
+  background: white;
+  border-radius: 50%;
+  transition: 0.3s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.toggle-thumb.on {
+  background: #34c759;
+}
+.toggle-thumb.on::before {
+  transform: translateX(20px);
+}
+
+/* Scope Grid */
+.scope-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+.scope-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  background: #f5f5f7;
+  border: 1.5px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.scope-card:hover { background: #ebebed; }
+.scope-card.active {
+  background: rgba(0,122,255,0.08);
+  border-color: #007aff;
+}
+.scope-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.scope-desc {
+  font-size: 11px;
+  color: #6b7280;
+  line-height: 1.4;
+}
+.scope-card.active .scope-name { color: #007aff; }
+
+/* Prompt Preset Grid */
+.prompt-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+.prompt-preset-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 8px;
+  background: #f5f5f7;
+  border: 1.5px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+.prompt-preset-card:hover { background: #ebebed; }
+.prompt-preset-card.active {
+  background: rgba(0,122,255,0.08);
+  border-color: #007aff;
+}
+.prompt-preset-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: rgba(0,0,0,0.05);
+  color: #6b7280;
+}
+.prompt-preset-card.active .prompt-preset-icon {
+  background: rgba(0,122,255,0.12);
+  color: #007aff;
+}
+.prompt-preset-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.prompt-preset-desc {
+  font-size: 10px;
+  color: #9ca3af;
+  line-height: 1.4;
 }
 
 /* 输入 + 单位 */

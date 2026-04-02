@@ -13,6 +13,8 @@ if sys.platform == 'win32':
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from common.core.config import settings
 from common.models.response import ResponseModel
 from services.base.auth.main import router as auth_router
@@ -53,6 +55,7 @@ from services.intelligence.exercise.main import router as exercise_router
 from services.intelligence.worksheet.main import router as worksheet_router
 from services.intelligence.homework_gen.main import router as homework_gen_router
 from services.intelligence.warning.main import router as warning_router
+from services.intelligence.code.main import router as code_router
 from services.adapt.gateway.main import router as gateway_router
 from services.adapt.sync.main import router as sync_router
 from services.agent.template.main import router as agent_template_router
@@ -391,6 +394,7 @@ app.include_router(exercise_router, prefix=settings.API_PREFIX)
 app.include_router(worksheet_router, prefix=settings.API_PREFIX)
 app.include_router(homework_gen_router, prefix=settings.API_PREFIX)
 app.include_router(warning_router, prefix=settings.API_PREFIX)
+app.include_router(code_router, prefix=settings.API_PREFIX)
 app.include_router(gateway_router, prefix=settings.API_PREFIX)
 app.include_router(sync_router, prefix=settings.API_PREFIX)
 app.include_router(agent_template_router, prefix=settings.API_PREFIX)
@@ -399,6 +403,11 @@ app.include_router(agent_destroy_router, prefix=settings.API_PREFIX)
 app.include_router(agent_tools_router, prefix=settings.API_PREFIX)
 app.include_router(agent_crud_router, prefix=settings.API_PREFIX)
 app.include_router(visual_router, prefix=settings.API_PREFIX)
+
+# 挂载前端 dist 静态文件（挂载到 /app 路径，避开 /api/v1/*）
+_frontend_dist = Path(__file__).resolve().parents[1] / "class_system" / "frontend" / "dist"
+if _frontend_dist.exists():
+    app.mount("/app", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")
 
 
 if __name__ == "__main__":

@@ -72,21 +72,23 @@ class KimiClient:
         """Check if the content is a base64 image URL."""
         return url_or_data.startswith("data:image/") or url_or_data.startswith("http")
 
-    def build_image_url_block(self, image_data: str, detail: str = "auto") -> Dict[str, Any]:
+    def build_image_url_block(self, image_data: str, detail: str = "auto", mime_type: str = "image/jpeg") -> Dict[str, Any]:
         """
         Build an image_url content block for vision.
-        
+
         Args:
             image_data: Base64 encoded image data (with or without data URI prefix) or URL
             detail: Detail level - "low", "high", or "auto"
-        
+            mime_type: MIME type of the image, used when image_data is raw base64 (without prefix).
+                       Examples: "image/jpeg", "image/png", "image/webp", "image/gif"
+
         Returns:
             Content block dict for the API
         """
         # Ensure proper base64 format
         if not image_data.startswith("data:") and not image_data.startswith("http"):
-            image_data = f"data:image/jpeg;base64,{image_data}"
-        
+            image_data = f"data:{mime_type};base64,{image_data}"
+
         return {
             "type": "image_url",
             "image_url": {
@@ -738,6 +740,37 @@ class KimiClient:
 
     # ========== High-level helper methods ==========
 
+    def _detect_image_mime_from_base64(self, b64_data: str) -> str:
+        """从 base64 数据头部推断 MIME 类型（根据 JPEG/PNG/GIF/WebP 魔数）。
+
+        JPEG:    base64 头部 → "xxxx/9j/4"  (对应 JVBERi0 = 0xFF 0xD8 0xFF 0xE0)
+        PNG:     base64 头部 → "xxxx/iVBOR"  (对应 iVBOR = 0x89 0x50 0x4E 0x47)
+        GIF:     base64 头部 → "xxxx/R0lGOD"  (对应 R0lGOD = 0x47 0x49 0x46 0x38)
+        WebP:    base64 头部 → "xxxx/UklGR"   (对应 RIFF + WEBP 特征)
+        BMP:     base64 头部 → "xxxx/AAAAA"   (对应 QAAAA = 0x42 0x4D)
+        未知 → 默认 image/jpeg
+        """
+        if not b64_data:
+            return "image/jpeg"
+        try:
+            import base64 as _b64_mod
+            # 取前 30 个字符的 base64，decode 后检查前 4 字节
+            sample = b64_data[:30]
+            raw = _b64_mod.b64decode(sample)
+            if raw[:3] == b'\xff\xd8\xff':
+                return "image/jpeg"
+            if raw[:4] == b'\x89PNG':
+                return "image/png"
+            if raw[:3] == b'GIF':
+                return "image/gif"
+            if raw[:4] == b'RIFF' and raw[8:12] == b'WEBP':
+                return "image/webp"
+            if raw[:2] == b'BM':
+                return "image/bmp"
+        except Exception:
+            pass
+        return "image/jpeg"
+
     async def vision_chat(
         self,
         prompt: str,
@@ -748,26 +781,32 @@ class KimiClient:
     ) -> str:
         """
         Convenience method for vision chat with images and/or uploaded files.
-        
+
         Args:
             prompt: User's question/prompt
             images: List of base64 encoded images or raw bytes
             files: List of file_ids from uploaded files
             system_prompt: System prompt
             **kwargs: Additional parameters for chat()
-        
+
         Returns:
             Model's response text
         """
         content_blocks = []
-        
+
         if images:
             for img in images:
                 if isinstance(img, bytes):
                     b64 = base64.b64encode(img).decode()
-                    content_blocks.append(self.build_image_url_block(b64))
+                    mime_type = self._detect_image_mime_from_base64(b64)
+                    content_blocks.append(self.build_image_url_block(b64, mime_type=mime_type))
                 else:
-                    content_blocks.append(self.build_image_url_block(img))
+                    # img 可能是带 data: 前缀的 URL，也可能是纯 base64
+                    if img.startswith("data:") or img.startswith("http"):
+                        content_blocks.append(self.build_image_url_block(img))
+                    else:
+                        mime_type = self._detect_image_mime_from_base64(img)
+                        content_blocks.append(self.build_image_url_block(img, mime_type=mime_type))
         
         if files:
             for file_id in files:

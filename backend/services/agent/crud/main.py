@@ -1,5 +1,6 @@
-"""Agent CRUD + Chat 接口"""
+"""Agent CRUD + Chat 接口 - 增强版（集成 Agent 类型、内存、钩子、子代理）"""
 import json
+import hashlib
 import httpx
 import asyncio
 from uuid import uuid4
@@ -14,7 +15,21 @@ from common.core.config import settings
 # 导入工具注册表
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from services.agent.tools.registry import get_tools_for_agent, execute_tool
+from services.agent.tools.registry import get_tools_for_agent, execute_tool, is_tool_allowed
+
+# 导入增强模块
+from services.agent.prompts import (
+    build_agent_system_prompt,
+    build_tool_rules,
+    build_memory_prompt,
+    build_context_prompt,
+    AGENT_TYPE_SYSTEM_PROMPTS,
+    get_when_to_use_prompt
+)
+from services.agent.memory import add_session_memory, get_session_memory, agent_memory
+from services.agent.hooks import hook_manager, filter_message, process_response
+from services.agent.subagent import task_manager, TaskType
+from services.agent.types import AgentType, AgentDefinition
 
 router = APIRouter(prefix="/agent", tags=["Agent"])
 
@@ -114,28 +129,60 @@ def _save_agents(agents: List[dict]):
 
 
 # --- Pydantic 模型 ---
+
 class AgentCreate(BaseModel):
     name: str = Field(..., description="智能体名称")
     prompt: str = Field("", description="提示词")
+    agent_type: str = Field("general", description="Agent类型: general, explorer, planner, verifier, tutor, grader, custom")
     callable_by_others: bool = Field(False)
     english_id: str = Field("")
     when_to_call: str = Field("")
+    when_not_to_call: str = Field("", description="何时不使用此Agent")
     enabled_tools: List[str] = Field(default_factory=list)
     avatar: Optional[str] = None
+    color: Optional[str] = Field(None, description="UI颜色")
+    model: Optional[str] = Field(None, description="指定模型")
+    memory_enabled: bool = Field(True, description="是否启用记忆")
+    max_tool_calls: int = Field(10, ge=1, le=50, description="最大工具调用次数")
+    max_turns: int = Field(20, ge=1, le=100, description="最大对话轮次")
 
 
 class AgentUpdate(BaseModel):
     name: Optional[str] = None
     prompt: Optional[str] = None
+    agent_type: Optional[str] = None
     callable_by_others: Optional[bool] = None
     english_id: Optional[str] = None
     when_to_call: Optional[str] = None
+    when_not_to_call: Optional[str] = None
     enabled_tools: Optional[List[str]] = None
     avatar: Optional[str] = None
+    color: Optional[str] = None
+    model: Optional[str] = None
+    memory_enabled: Optional[bool] = None
+    max_tool_calls: Optional[int] = None
+    max_turns: Optional[int] = None
+
+
+def _extract_content(message: dict) -> str:
+    """从 Kimi 回复的 message 中提取文本内容。
+
+    kimi-k2.5 可能把内容放在 content 或 reasoning_content 字段中：
+    - reasoning_content：推理过程（Kimi-k2.5 主要在此返回内容）
+    - content：最终回复（有时为空）
+    两者都存在时优先取 content，若为空则取 reasoning_content。
+    """
+    content = message.get("content", "")
+    if content and content.strip():
+        return content
+    reasoning = message.get("reasoning_content", "")
+    if reasoning and reasoning.strip():
+        return reasoning
+    return content or ""
 
 
 class ChatRequest(BaseModel):
-    agent_id: str
+    agent_id: Optional[str] = Field(None, description="可选，不传则自动使用最新 Agent")
     message: str
     student_id: str = "default"
     session_id: Optional[str] = None
@@ -150,6 +197,14 @@ class ChatRequest(BaseModel):
     tools: Optional[List[Dict[str, Any]]] = None
     # 多模态支持：图片/文档 base64 数据
     files: Optional[List[Dict[str, str]]] = None  # [{type: "image/jpeg", data: "base64..."}]
+    # 增强功能
+    use_memory: bool = Field(True, description="是否使用记忆")
+    enable_hooks: bool = Field(True, description="是否启用钩子")
+    context: Optional[Dict[str, Any]] = Field(None, description="额外上下文")
+    # Agent 配置（从前端配置中心传入）
+    agent_type: Optional[str] = Field("tutor", description="Agent 类型，决定系统提示词模板")
+    personality: Optional[str] = Field("balanced", description="性格倾向")
+    custom_prompt: Optional[str] = Field("", description="自定义提示词")
 
 
 # --- CRUD ---
@@ -170,25 +225,50 @@ async def get_agent(agent_id: str):
 
 
 @router.post("", response_model=ResponseModel)
-async def create_agent(data: AgentCreate):
+async def create_or_update_agent(data: AgentCreate):
+    """创建或更新智能体（同名则更新）"""
     agents = _load_agents()
-    if any(a["name"] == data.name for a in agents):
-        return ResponseModel(code=400, message="智能体名称已存在")
-    agent = {
-        "id": str(uuid4()),
-        "name": data.name,
-        "prompt": data.prompt,
-        "callable_by_others": data.callable_by_others,
-        "english_id": data.english_id,
-        "when_to_call": data.when_to_call,
-        "enabled_tools": data.enabled_tools,
-        "avatar": data.avatar,
-        "created_at": datetime.utcnow().isoformat(),
-        "updated_at": datetime.utcnow().isoformat(),
-    }
-    agents.append(agent)
-    _save_agents(agents)
-    return ResponseModel(code=201, message="success", data=agent)
+    
+    # 查找同名 Agent
+    existing_idx = None
+    for i, a in enumerate(agents):
+        if a["name"] == data.name:
+            existing_idx = i
+            break
+    
+    now = datetime.utcnow().isoformat()
+    
+    if existing_idx is not None:
+        # 更新已存在的 Agent
+        update_data = data.model_dump(exclude_unset=True)
+        agents[existing_idx].update(update_data)
+        agents[existing_idx]["updated_at"] = now
+        _save_agents(agents)
+        return ResponseModel(code=200, message="智能体已更新", data=agents[existing_idx])
+    else:
+        # 创建新 Agent
+        agent = {
+            "id": str(uuid4()),
+            "name": data.name,
+            "prompt": data.prompt,
+            "agent_type": data.agent_type,
+            "callable_by_others": data.callable_by_others,
+            "english_id": data.english_id,
+            "when_to_call": data.when_to_call,
+            "when_not_to_call": data.when_not_to_call,
+            "enabled_tools": data.enabled_tools,
+            "avatar": data.avatar,
+            "color": data.color,
+            "model": data.model,
+            "memory_enabled": data.memory_enabled,
+            "max_tool_calls": data.max_tool_calls,
+            "max_turns": data.max_turns,
+            "created_at": now,
+            "updated_at": now,
+        }
+        agents.append(agent)
+        _save_agents(agents)
+        return ResponseModel(code=201, message="智能体创建成功", data=agent)
 
 
 @router.put("/{agent_id}", response_model=ResponseModel)
@@ -212,6 +292,160 @@ async def delete_agent(agent_id: str):
         return ResponseModel(code=404, message="智能体不存在")
     _save_agents(new_agents)
     return ResponseModel(code=200, message="删除成功")
+
+
+# --- Agent 类型相关 API ---
+
+@router.get("/types/list", response_model=ResponseModel)
+async def list_agent_types():
+    """列出所有支持的 Agent 类型"""
+    types_info = {
+        "general": {
+            "id": "general",
+            "name": "通用代理",
+            "description": "处理各种任务的通用智能体",
+            "recommended_tools": ["reading", "editing", "terminal", "tavily_search", "knowledge_search"]
+        },
+        "explorer": {
+            "id": "explorer",
+            "name": "探索代理",
+            "description": "专门进行代码搜索和分析（只读模式）",
+            "recommended_tools": ["reading", "tavily_search", "knowledge_search"],
+            "disallowed_tools": ["editing", "terminal"]
+        },
+        "planner": {
+            "id": "planner",
+            "name": "计划代理",
+            "description": "专门进行需求分析和架构设计",
+            "recommended_tools": ["reading", "tavily_search", "knowledge_search"],
+            "disallowed_tools": ["editing", "terminal"]
+        },
+        "verifier": {
+            "id": "verifier",
+            "name": "验证代理",
+            "description": "专门验证实现是否符合需求",
+            "recommended_tools": ["reading", "terminal", "knowledge_search"]
+        },
+        "tutor": {
+            "id": "tutor",
+            "name": "辅导代理",
+            "description": "专门帮助学生学习",
+            "recommended_tools": ["tavily_search", "knowledge_search", "preview"],
+            "disallowed_tools": ["editing", "terminal"]
+        },
+        "grader": {
+            "id": "grader",
+            "name": "批改代理",
+            "description": "专门批改作业和评分",
+            "recommended_tools": ["reading", "editing", "knowledge_search"],
+            "disallowed_tools": ["terminal"]
+        },
+        "custom": {
+            "id": "custom",
+            "name": "自定义代理",
+            "description": "用户自定义的智能体",
+            "recommended_tools": ["reading", "tavily_search", "knowledge_search"],
+            "disallowed_tools": ["terminal"]
+        }
+    }
+    return ResponseModel(code=200, message="success", data={"types": types_info})
+
+
+# --- 工具相关 API ---
+
+@router.get("/tools/available", response_model=ResponseModel)
+async def list_available_tools():
+    """列出所有可用的工具"""
+    from services.agent.tools.registry import get_tools_metadata
+    return ResponseModel(code=200, message="success", data={"tools": get_tools_metadata()})
+
+
+@router.get("/tools/permissions/{agent_type}", response_model=ResponseModel)
+async def get_tool_permissions(agent_type: str):
+    """获取指定 Agent 类型的工具权限"""
+    from services.agent.tools.registry import is_tool_allowed, ALL_AGENT_DISALLOWED_TOOLS, AGENT_TYPE_DISALLOWED_TOOLS
+    
+    all_tools = ["reading", "editing", "terminal", "preview", "tavily_search", "download_to_knowledge", "knowledge_search"]
+    permissions = {}
+    
+    for tool in all_tools:
+        allowed = is_tool_allowed(tool, agent_type)
+        permissions[tool] = {
+            "allowed": allowed,
+            "reason": "禁止使用" if not allowed else "允许使用"
+        }
+    
+    return ResponseModel(code=200, message="success", data={
+        "agent_type": agent_type,
+        "permissions": permissions,
+        "default_disallowed": list(ALL_AGENT_DISALLOWED_TOOLS),
+        "type_disallowed": list(AGENT_TYPE_DISALLOWED_TOOLS.get(agent_type, set()))
+    })
+
+
+# --- 记忆相关 API ---
+
+@router.get("/memory/{session_id}", response_model=ResponseModel)
+async def get_session_memories(session_id: str, limit: int = 10):
+    """获取会话记忆"""
+    from services.agent.memory import get_session_memory
+    memory = get_session_memory(session_id, limit)
+    return ResponseModel(code=200, message="success", data={"session_id": session_id, "memory": memory})
+
+
+@router.delete("/memory/{session_id}", response_model=ResponseModel)
+async def clear_session_memory(session_id: str):
+    """清除会话记忆"""
+    from services.agent.memory import agent_memory, MemoryScope
+    count = agent_memory.clear_session(session_id)
+    return ResponseModel(code=200, message="success", data={"session_id": session_id, "cleared_count": count})
+
+
+@router.post("/memory/{session_id}", response_model=ResponseModel)
+async def add_memory(
+    session_id: str,
+    content: str,
+    importance: float = 1.0,
+    tags: str = ""
+):
+    """添加会话记忆"""
+    from services.agent.memory import add_session_memory
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
+    memory = add_session_memory(session_id, content, importance, tag_list)
+    return ResponseModel(code=200, message="success", data=memory.to_dict())
+
+
+# --- 钩子相关 API ---
+
+@router.get("/hooks", response_model=ResponseModel)
+async def list_hooks():
+    """列出所有钩子"""
+    from services.agent.hooks import list_available_hooks
+    hooks = list_available_hooks()
+    return ResponseModel(code=200, message="success", data={"hooks": hooks})
+
+
+# --- 子代理相关 API ---
+
+@router.get("/tasks", response_model=ResponseModel)
+async def list_tasks(status: str = None):
+    """列出任务"""
+    from services.agent.subagent import TaskStatus
+    tasks = task_manager.list_tasks(
+        status=TaskStatus(status) if status else None
+    )
+    return ResponseModel(code=200, message="success", data={
+        "tasks": [t.to_dict() for t in tasks]
+    })
+
+
+@router.get("/tasks/{task_id}", response_model=ResponseModel)
+async def get_task_status(task_id: str):
+    """获取任务状态"""
+    task = task_manager.get_task(task_id)
+    if not task:
+        return ResponseModel(code=404, message="任务不存在")
+    return ResponseModel(code=200, message="success", data=task.to_dict())
 
 
 # --- Chat ---
@@ -238,12 +472,56 @@ def _save_session(session_id: str, messages: List[dict]):
 
 async def _call_llm(
     messages: List[dict],
-    tools: Optional[List[dict]] = None
+    tools: Optional[List[dict]] = None,
+    model: str = "kimi-k2.5",
+    max_tokens: int = 4096,
+    temperature: float = 1.0,
+    top_p: float = 1.0,
+    frequency_penalty: float = 0.0,
+    presence_penalty: float = 0.0
 ) -> str:
-    """调用后端 /chat/message 接口获取 LLM 回复（支持 Function Calling）"""
+    """直接调用 Kimi API 获取 LLM 回复（支持多模态消息）。
+
+    重要：messages 中的最后一条消息的 content 可能是 list（包含 image_url blocks），
+    不能转成字符串，必须直接传给 kimi_client.chat()。
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    last_msg = messages[-1] if messages else None
+    last_content = last_msg.get("content") if last_msg else None
+
+    # 如果最后一条消息是多模态列表（包含图片/文件），直接调用 kimi_client.chat
+    if isinstance(last_content, list):
+        from common.integration.kimi import kimi_client as kc
+        try:
+            result = await kc.chat(
+                messages=messages,
+                tools=tools,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                top_p=top_p,
+                frequency_penalty=frequency_penalty,
+                presence_penalty=presence_penalty,
+            )
+            if "error" in result:
+                detail = result.get("detail") or ""
+                logger.error(f"[_call_llm] Kimi API error: {result['error']} | {detail[:200]}")
+                return f"抱歉，调用 AI 服务时出错：{result['error']}"
+            choices = result.get("choices", [])
+            if choices:
+                message = choices[0].get("message") or {}
+                content = _extract_content(message)
+                return content if content else "（无回复）"
+            return "（无回复）"
+        except Exception as e:
+            logger.error(f"[_call_llm] Exception: {e}")
+            return f"已收到你的消息。当前智能体正在处理中，请稍候。"
+
+    # 纯文本消息：兼容调用 /chat/message 接口（兜底）
     try:
-        # 构造 chat message 格式
-        text = messages[-1]["content"] if messages else ""
+        text = last_content or ""
         payload = {
             "message": text,
             "mode": "general",
@@ -251,8 +529,6 @@ async def _call_llm(
             "session_id": None,
             "course_id": None,
         }
-
-        # 如果有工具定义，也传给后端
         if tools:
             payload["tools"] = tools
 
@@ -267,7 +543,6 @@ async def _call_llm(
                     return data["data"]["response"]
     except Exception:
         pass
-    # 降级：返回简单回复
     return f"已收到你的消息。当前智能体正在处理中，请稍候。"
 
 
@@ -349,42 +624,181 @@ async def _call_llm_with_tools(
         return {"type": "message", "content": f"抱歉，调用 AI 服务时出错：{str(e)}"}
 
 
+async def _call_llm_stream_output(
+    messages: List[dict],
+    tools: List[dict],
+    model: str = "kimi-k2.5",
+    temperature: float = 1.0,
+    max_tokens: int = 4096,
+    top_p: float = 1.0,
+    frequency_penalty: float = 0.0,
+    presence_penalty: float = 0.0,
+    yield_func=None
+):
+    """
+    调用 Kimi API 并流式输出结果（支持 Function Calling）
+
+    Args:
+        yield_func: 用于输出数据的生成器函数
+    """
+    from common.integration.kimi import kimi_client
+    import logging
+    logger = logging.getLogger(__name__)
+
+    tool_calls_log = []
+    current_tool_call_msg = None
+
+    while True:
+        try:
+            result = await kimi_client.chat(
+                messages=messages,
+                tools=tools,
+                model=model,
+                temperature=1.0,
+                max_tokens=max_tokens,
+                top_p=1.0,
+                frequency_penalty=frequency_penalty,
+                presence_penalty=presence_penalty
+            )
+
+            if "error" in result:
+                detail = result.get("detail") or ""
+                err_text = f"抱歉，调用 AI 服务时出错：{result['error']}"
+                if detail:
+                    err_text = err_text + " " + detail[:800]
+                if yield_func:
+                    yield_func(err_text)
+                return err_text, tool_calls_log
+
+            choices = result.get("choices", [])
+            if not choices:
+                err_text = "抱歉，没有收到 AI 的回复。"
+                if yield_func:
+                    yield_func(err_text)
+                return err_text, tool_calls_log
+
+            message = choices[0].get("message", {})
+
+            # 检查是否有 tool_calls
+            if "tool_calls" in message and message["tool_calls"]:
+                for tc in message["tool_calls"]:
+                    tool_name = tc["function"]["name"]
+                    tool_args = tc["function"].get("arguments", {})
+
+                    try:
+                        if isinstance(tool_args, str):
+                            tool_args = json.loads(tool_args)
+                    except json.JSONDecodeError:
+                        tool_args = {}
+
+                    # 添加 assistant 的 tool_call 消息
+                    tool_call_msg = {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [tc]
+                    }
+                    if message.get("reasoning_content"):
+                        tool_call_msg["reasoning_content"] = message.get("reasoning_content")
+                    messages.append(tool_call_msg)
+
+                    # 执行工具
+                    backend_url = f"http://{settings.HOST or '127.0.0.1'}:{settings.PORT or 8000}"
+                    tool_result = await execute_tool(tool_name, tool_args, base_url=backend_url)
+
+                    tool_calls_log.append({
+                        "tool": tool_name,
+                        "arguments": tool_args,
+                        "result": tool_result
+                    })
+
+                    # 添加 tool 角色消息
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc["id"],
+                        "content": json.dumps(tool_result, ensure_ascii=False)
+                    })
+
+                # 继续循环，获取最终回复
+                continue
+
+            # 普通文本回复 - 流式输出
+            content = message.get("content", "")
+            if content and yield_func:
+                # 逐字符/词输出，模拟打字效果
+                for i in range(0, len(content), 3):
+                    chunk = content[i:i+3]
+                    yield_func(chunk)
+                    await asyncio.sleep(0.005)  # 控制输出速度
+
+            return content, tool_calls_log
+
+        except Exception as e:
+            err_text = f"抱歉，调用 AI 服务时出错：{str(e)}"
+            if yield_func:
+                yield_func(err_text)
+            return err_text, tool_calls_log
+
+
 @router.post("/chat", response_model=ResponseModel)
 async def agent_chat(data: ChatRequest):
-    """与指定智能体对话（支持 Function Calling）"""
+    """与最新智能体对话（自动使用最新创建的 Agent）"""
     agents = _load_agents()
-    agent = next((a for a in agents if a["id"] == data.agent_id), None)
-    if not agent:
-        return ResponseModel(code=404, message="智能体不存在")
+    
+    # 按 updated_at 排序，获取最新的 Agent
+    if agents:
+        agents.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+        agent = agents[0]  # 使用最新的 Agent
+    else:
+        return ResponseModel(code=404, message="请先创建智能体")
 
     session_id = data.session_id or str(uuid4())
     history = _load_session(session_id)
 
+    # 优先使用前端传入的配置，否则回退到 Agent 配置
+    agent_type = data.agent_type or agent.get("agent_type", "tutor")
+    memory_enabled = data.use_memory if data.use_memory is not None else agent.get("memory_enabled", True)
+    custom_prompt = data.custom_prompt or agent.get("prompt", "")
+    personality = data.personality or agent.get("personality", "balanced")
+
+    # ========== 消息过滤（钩子前置处理） ==========
+    if data.enable_hooks:
+        hook_context = {
+            "agent_id": agent["id"],
+            "agent_type": agent_type,
+            "session_id": session_id,
+            "student_id": data.student_id
+        }
+        filtered_message = await filter_message(data.message, hook_context)
+        if filtered_message != data.message:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[Agent Chat] 消息经过钩子过滤: {len(data.message)} -> {len(filtered_message)}")
+
     # 构建用户消息（支持多模态）
     # 所有文件都上传到 Kimi 获取 file_id，然后用 file 格式引用
     user_msg = {"role": "user", "content": data.message}
-    
+
     # 处理文件上传
     file_messages = []  # 存储多模态消息块
     file_text_contents = []  # 存储文档抽取的文本内容
-    
+
     if data.files:
         from common.integration.kimi import kimi_client
         import logging
         logger = logging.getLogger(__name__)
-        
+
         for f in data.files:
             file_type = f.get("type", "application/octet-stream")
             file_data = f.get("data", "")
             data_len = len(file_data)
-            
+
             logger.info(f"正在处理文件: type={file_type}, data_len={data_len}")
-            
+
             # 空数据检查
             if not file_data:
                 logger.warning("文件数据为空，跳过")
                 continue
-            
+
             # 图片文件：使用 image_url 格式（兼容 kimi-k2.5）
             if file_type.startswith("image/"):
                 # 构建 image_url 格式（将 base64 转为 data URL）
@@ -392,7 +806,8 @@ async def agent_chat(data: ChatRequest):
                 file_messages.append({
                     "type": "image_url",
                     "image_url": {
-                        "url": data_url
+                        "url": data_url,
+                        "detail": "high",
                     }
                 })
                 logger.info(f"图片已转换为 image_url 格式: type={file_type}, size={data_len}")
@@ -412,7 +827,7 @@ async def agent_chat(data: ChatRequest):
                         logger.warning(f"文档内容获取失败，但文件已上传: file_id={file_id}")
                 else:
                     logger.warning(f"文档上传失败: type={file_type}")
-    
+
     # 用户消息入历史（存储文本形式）
     history.append({
         "role": "user",
@@ -420,52 +835,58 @@ async def agent_chat(data: ChatRequest):
         "time": datetime.utcnow().isoformat(),
     })
 
-    # 拼接 system prompt
-    system_prompt = agent.get("prompt", "") or (
-        f"你是一个名为「{agent['name']}」的AI助手。请根据用户的问题给出专业、准确、有帮助的回答。"
-    )
+    # ========== 构建增强的 System Prompt ==========
 
     # 获取 Agent 启用的工具
     enabled_tools = agent.get("enabled_tools", [])
-    tools = get_tools_for_agent(enabled_tools)
 
-    # 构建发给 LLM 的消息
-    # 【关键】将工具使用规则放在 system prompt 最前面，确保模型优先遵循
-    if tools:
-        tool_names = [t["function"]["name"] for t in tools]
-        core_rules = ""
-        core_rules += "\n【重要】你是一个智能助手，可以通过调用工具来完成任务。"
+    # 构建完整的 system prompt（使用增强的 Prompt 系统）
+    from services.agent.prompts import build_personality_prompt
+    system_prompt = build_agent_system_prompt(
+        agent_type=agent_type,
+        custom_prompt=custom_prompt,
+        enabled_tools=enabled_tools,
+        personality=personality
+    )
 
-        # 文件读写工具规则（只针对上传的文件）
-        if 'reading' in tool_names or 'editing' in tool_names:
-            core_rules += "\n【文件操作】reading 和 editing 工具只能访问用户在当前对话中上传的文件，"
-            core_rules += "不能访问工作区、项目目录或其他系统文件。当用户提到「我上传的文件」「刚才的文件」时才使用文件工具。"
+    # 多图：子代理无法接收 image_url，禁止误导模型去 delegate「看图」
+    if file_messages and len(file_messages) > 1:
+        system_prompt += (
+            "\n\n【重要：用户上传了多张图片】请在本条回复中**依次**阅读每张 image_url 并分析；"
+            "**不要**使用 delegate_task 处理图片（子代理看不到图片）。"
+        )
 
-        # download_to_knowledge 强制规则
-        if 'download_to_knowledge' in tool_names:
-            core_rules += "\n【最高优先级】当用户要求保存资料到知识库时："
-            core_rules += "1) 立即调用 download_to_knowledge 工具；2) course_id='default'；3) 禁止询问任何路径问题，直接执行！"
+    # 获取工具定义
+    tools = get_tools_for_agent(enabled_tools, agent_type)
+    has_tools = len(tools) > 0
+    tool_names_list = [t["function"]["name"] for t in tools] if has_tools else []
 
-        # 添加知识库检索工具提示
-        if 'knowledge_search' in tool_names:
-            core_rules += "\n【知识库检索】当用户询问需要查找资料、解释概念、回答与已上传文档相关的问题时，可以调用 knowledge_search 工具搜索知识库。"
+    # 构建发给 LLM 的消息列表
+    llm_messages = [{"role": "system", "content": system_prompt}]
 
-        # 联网搜索规则
-        if 'web_search' in tool_names:
-            core_rules += "\n【联网搜索】当用户询问最新信息、新闻、实时数据时，应该调用 web_search 工具。"
+    # ========== 添加记忆内容 ==========
+    if memory_enabled and data.use_memory:
+        # 获取会话记忆
+        session_memory = get_session_memory(session_id, limit=5)
+        if session_memory:
+            memory_prompt = build_memory_prompt(session_memory, scope="session")
+            llm_messages.append({"role": "system", "content": memory_prompt})
 
-        # 终端命令规则
-        if 'terminal' in tool_names:
-            core_rules += "\n【终端命令】当用户要求运行代码、安装依赖、执行命令时，可以调用 terminal 工具。注意：只执行安全的命令。"
+        # 获取 Agent 持久记忆
+        agent_memory_content = get_session_memory(f"agent_{agent['id']}", limit=10)
+        if agent_memory_content:
+            agent_memory_prompt = build_memory_prompt(agent_memory_content, scope="agent")
+            llm_messages.append({"role": "system", "content": agent_memory_prompt})
 
-        # 添加工具列表
-        core_rules += f"\n\n可用工具：{', '.join(tool_names)}"
+    # ========== 添加上下文 ==========
+    if data.context:
+        context_prompt = build_context_prompt(
+            user_context=data.context,
+            student_info={"id": data.student_id} if data.student_id else None
+        )
+        if context_prompt:
+            llm_messages.append({"role": "system", "content": context_prompt})
 
-        # 将核心规则放在 system prompt 最前面
-        llm_messages = [{"role": "system", "content": core_rules + "\n\n" + system_prompt}]
-    else:
-        llm_messages = [{"role": "system", "content": system_prompt}]
-    
     # 添加上传文档的内容（作为 system 消息）
     if file_text_contents:
         for fc in file_text_contents:
@@ -480,31 +901,26 @@ async def agent_chat(data: ChatRequest):
     # 添加历史消息（仅文本形式）
     for msg in history[:-1]:  # 不包含当前用户消息
         llm_messages.append({"role": msg["role"], "content": msg["content"]})
-    
+
     # 构建用户消息（支持多模态）
-    if file_messages:
-        user_content = []
+    # 顺序：用户问题(文本) -> 图片 -> 文档内容
+    if file_messages or file_text_contents:
+        user_content = [{"type": "text", "text": data.message}]
         for block in file_messages:
             user_content.append(block)
-        user_content.append({
-            "type": "text",
-            "text": data.message
-        })
+        if file_text_contents:
+            user_content.append({"type": "text", "text": "【上传文档内容】\n" + "\n---\n".join(file_text_contents)})
         llm_messages.append({"role": "user", "content": user_content})
     else:
         llm_messages.append({"role": "user", "content": data.message})
 
-    # 定义 has_tools
-    has_tools = len(tools) > 0
-    tool_names_list = [t["function"]["name"] for t in tools] if has_tools else []
     tool_calls_log = []  # 定义在前面，供下载检测逻辑使用
-    
+
     import logging
     logger = logging.getLogger(__name__)
-    logger.info(f"[Agent Chat] has_tools={has_tools}, tool_names={tool_names_list}")
-    logger.info(f"[Agent Chat] 多模态消息: user_msg type={'list' if isinstance(user_msg.get('content'), list) else 'str'}")
+    logger.info(f"[Agent Chat] agent_type={agent_type}, has_tools={has_tools}, tool_names={tool_names_list}")
 
-    requested_model = data.model or "kimi-k2.5"
+    requested_model = data.model or agent.get("model") or "kimi-k2.5"
     llm_model = requested_model
     if file_messages:
         if llm_model not in KIMI_VISION_MODELS:
@@ -655,7 +1071,7 @@ async def agent_chat(data: ChatRequest):
             else:
                 choices = result.get("choices", [])
                 if choices:
-                    response_text = (choices[0].get("message") or {}).get("content", "") or "（无回复）"
+                    response_text = _extract_content(choices[0].get("message") or {}) or "（无回复）"
                 else:
                     response_text = "抱歉，没有收到 AI 的回复。"
         else:
@@ -669,6 +1085,36 @@ async def agent_chat(data: ChatRequest):
     })
     _save_session(session_id, history)
 
+    # ========== 保存记忆（钩子后置处理） ==========
+    if memory_enabled and data.use_memory:
+        # 保存会话记忆
+        add_session_memory(
+            session_id=session_id,
+            content=f"用户: {data.message}\n助手: {response_text}",
+            importance=0.8,
+            tags=["conversation"]
+        )
+
+        # 保存 Agent 持久记忆（重要信息）
+        if tool_calls_log:
+            tool_names = [tc["tool"] for tc in tool_calls_log]
+            add_session_memory(
+                session_id=f"agent_{agent['id']}",
+                content=f"本会话使用了工具: {', '.join(tool_names)}",
+                importance=0.5,
+                tags=["tool_usage"]
+            )
+
+    # 钩子后置处理
+    if data.enable_hooks:
+        await process_response(response_text, {
+            "agent_id": agent["id"],
+            "agent_type": agent_type,
+            "session_id": session_id,
+            "student_id": data.student_id,
+            "tool_calls_count": len(tool_calls_log) if tool_calls_log else 0
+        })
+
     return ResponseModel(
         code=200,
         message="success",
@@ -677,7 +1123,375 @@ async def agent_chat(data: ChatRequest):
             "session_id": session_id,
             "agent_name": agent["name"],
             "agent_id": agent["id"],
+            "agent_type": agent_type,
             "history": history,
             "tool_calls_log": tool_calls_log if tool_calls_log else None,
         },
+    )
+
+
+# ========== 流式对话接口 ==========
+
+@router.post("/chat/stream")
+async def agent_chat_stream(data: ChatRequest):
+    """Agent 流式对话接口 - 实时输出工具执行状态和AI回复"""
+    from fastapi.responses import StreamingResponse
+
+    agents = _load_agents()
+
+    # 按 updated_at 排序，获取最新的 Agent
+    if not agents:
+        return ResponseModel(code=404, message="请先创建智能体")
+
+    agents.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+    current_agent = agents[0]
+
+    session_id = data.session_id or str(uuid4())
+    history = _load_session(session_id)
+
+    # 优先使用前端传入的配置，否则回退到 Agent 配置
+    agent_type = data.agent_type or current_agent.get("agent_type", "tutor")
+    memory_enabled = data.use_memory if data.use_memory is not None else current_agent.get("memory_enabled", True)
+    custom_prompt = data.custom_prompt or current_agent.get("prompt", "")
+    personality = data.personality or current_agent.get("personality", "balanced")
+
+    async def generate_stream():
+        """生成流式响应"""
+        import logging
+        from common.integration.kimi import kimi_client
+        logger = logging.getLogger(__name__)
+
+        try:
+            # 发送开始信号
+            yield f"data: {json.dumps({'type': 'start', 'session_id': session_id}, ensure_ascii=False)}\n\n"
+
+            # 处理上传的文件
+            file_messages = []
+            file_text_contents = []
+            if data.files:
+                for i, f in enumerate(data.files):
+                    file_type = f.get("type", "application/octet-stream")
+                    file_data = f.get("data", "")
+                    data_len = len(file_data) if file_data else 0
+                    if not file_data:
+                        logger.warning(f"[AgentChat] 文件 {i} 数据为空，跳过")
+                        continue
+                    if file_type.startswith("image/"):
+                        data_url = f"data:{file_type};base64,{file_data}"
+                        # 验证 base64 完整性（长度 % 4 应该等于 0，或带 = padding）
+                        import base64 as _b64_mod
+                        try:
+                            _b64_mod.b64decode(file_data[: min(len(file_data), 64)] + "==")
+                            logger.info(
+                                f"[AgentChat] 图片 {i} base64 验证通过: "
+                                f"mime={file_type}, total_len={data_len}, "
+                                f"preview={file_data[:20]}..."
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"[AgentChat] 图片 {i} base64 验证失败: {e}, "
+                                f"mime={file_type}, total_len={data_len}, preview={file_data[:20]}..."
+                            )
+                        file_messages.append({
+                            "type": "image_url",
+                            "image_url": {"url": data_url, "detail": "high"},
+                        })
+                        logger.info(f"[AgentChat] 图片 {i} 已转换为 image_url: type={file_type}, url_len={len(data_url)}")
+                    else:
+                        # 文档使用 file-extract 获取文本
+                        logger.info(f"[AgentChat] 文档 {i} 开始上传: type={file_type}")
+                        file_id = await kimi_client.upload_file(file_data, file_type, "file-extract")
+                        if file_id:
+                            content = await kimi_client.get_file_content(file_id)
+                            if content:
+                                file_text_contents.append(content[:20000])
+                                logger.info(f"[AgentChat] 文档 {i} 内容获取成功: content_len={len(content)}")
+                            else:
+                                logger.warning(f"[AgentChat] 文档 {i} 内容获取失败: file_id={file_id}")
+                        else:
+                            logger.warning(f"[AgentChat] 文档 {i} 上传失败: type={file_type}")
+
+            # 构建用户消息（支持多模态）
+            # 顺序：用户问题(文本) -> 图片 -> 文档内容
+            if file_messages or file_text_contents:
+                user_content = [{"type": "text", "text": data.message}]
+                for b in file_messages:
+                    user_content.append({"type": "image_url", "image_url": b["image_url"]})
+                if file_text_contents:
+                    user_content.append({"type": "text", "text": "【上传文档内容】\n" + "\n---\n".join(file_text_contents)})
+            else:
+                user_content = data.message
+
+            # 保存用户消息（存储文本形式用于历史）
+            history.append({
+                "role": "user",
+                "content": data.message,
+                "time": datetime.utcnow().isoformat(),
+            })
+            _save_session(session_id, history)
+
+            # 构建消息
+            enabled_tools = current_agent.get("enabled_tools", [])
+            effective_custom_prompt = data.custom_prompt or current_agent.get("prompt", "")
+            from services.agent.prompts import build_personality_prompt
+            system_prompt = build_agent_system_prompt(
+                agent_type,
+                effective_custom_prompt,
+                enabled_tools,
+                personality
+            )
+
+            if len(file_messages) > 1:
+                image_hints = (
+                    "\n\n【重要：用户上传了多张图片】请在本条回复中**依次**阅读每张 image_url 并分析；"
+                    "**不要**使用 delegate_task 处理图片（子代理看不到图片）。"
+                )
+                system_prompt += image_hints
+
+            tools = get_tools_for_agent(enabled_tools, agent_type)
+            has_tools = len(tools) > 0
+
+            # 构建 LLM 消息
+            llm_messages = [{"role": "system", "content": system_prompt}]
+
+            # 添加记忆
+            if memory_enabled:
+                session_memory = get_session_memory(session_id, limit=5)
+                if session_memory:
+                    memory_prompt = build_memory_prompt(session_memory, scope="session")
+                    llm_messages.append({"role": "system", "content": memory_prompt})
+
+            # 添加历史消息（仅文本形式）
+            for msg in history[:-1]:
+                llm_messages.append({"role": msg["role"], "content": msg["content"]})
+
+            # 添加用户消息（多模态格式）
+            llm_messages.append({"role": "user", "content": user_content})
+
+            # 打印发送给 Kimi 的消息结构（调试用）
+            for i, m in enumerate(llm_messages):
+                role = m.get("role", "?")
+                c = m.get("content", "")
+                if isinstance(c, str):
+                    logger.info(f"[AgentChat] → Kimi msg[{i}] role={role} type=str len={len(c)}")
+                    if i == 0:  # system prompt 打印前 500 字
+                        logger.info(f"[AgentChat] → Kimi system_prompt(前500字): {c[:500]}")
+                elif isinstance(c, list):
+                    types = [b.get("type") if isinstance(b, dict) else type(b).__name__ for b in c]
+                    logger.info(f"[AgentChat] → Kimi msg[{i}] role={role} type=list blocks={types}")
+                    for j, block in enumerate(c):
+                        if isinstance(block, dict) and block.get("type") == "image_url":
+                            url = block.get("image_url", {}).get("url", "")
+                            logger.info(f"[AgentChat] → Kimi msg[{i}] block[{j}] image_url url_len={len(url)}")
+                else:
+                    logger.info(f"[AgentChat] → Kimi msg[{i}] role={role} type={type(c).__name__}")
+
+            # 获取模型（图片模式下强制使用视觉模型）
+            requested_model = data.model or current_agent.get("model") or "kimi-k2.5"
+            llm_model = requested_model
+            if file_messages and llm_model not in KIMI_VISION_MODELS:
+                llm_model = "kimi-k2.5"
+                logger.info(f"[AgentChat] 模型已切换: {requested_model} -> {llm_model} (因为包含 {len(file_messages)} 张图片)")
+            else:
+                logger.info(f"[AgentChat] 使用模型: {llm_model}, KIMI_VISION_MODELS={KIMI_VISION_MODELS}")
+
+            logger.info(f"[AgentChat] 最终使用模型: {llm_model}, file_messages数量: {len(file_messages)}, file_text_contents数量: {len(file_text_contents)}")
+
+            response_text = ""
+            tool_calls_log = []
+            messages_history = []
+
+            # 定义输出函数
+            def stream_output(chunk):
+                yield f"data: {json.dumps({'type': 'content', 'content': chunk}, ensure_ascii=False)}\n\n"
+
+            if has_tools:
+                # 带工具调用的流式处理
+                logger.info(f"[AgentChat] tools enabled: {[t.get('function', {}).get('name') for t in tools]}")
+                for call_count in range(MAX_TOOL_CALLS):
+                    # 调用 LLM（每次都重新调用）
+                    result = await kimi_client.chat(
+                        messages=llm_messages,
+                        tools=tools,
+                        model=llm_model,
+                        temperature=1.0,
+                        max_tokens=data.max_tokens or 4096,
+                        top_p=1.0,
+                        frequency_penalty=data.frequency_penalty or 0.0,
+                        presence_penalty=data.presence_penalty or 0.0
+                    )
+
+                    if "error" in result:
+                        detail = result.get("detail") or ""
+                        err_text = f"抱歉，调用 AI 服务时出错：{result['error']}"
+                        if detail:
+                            err_text = err_text + " " + detail[:800]
+                        yield f"data: {json.dumps({'type': 'content', 'content': err_text}, ensure_ascii=False)}\n\n"
+                        response_text = err_text
+                        break
+
+                    choices = result.get("choices", [])
+                    if not choices:
+                        err_text = "抱歉，没有收到 AI 的回复。"
+                        yield f"data: {json.dumps({'type': 'content', 'content': err_text}, ensure_ascii=False)}\n\n"
+                        response_text = err_text
+                        break
+
+                    message = choices[0].get("message", {})
+
+                    # 检查是否有 tool_calls
+                    if "tool_calls" in message and message["tool_calls"]:
+                        for tc in message["tool_calls"]:
+                            tool_name = tc["function"]["name"]
+                            tool_args = tc["function"].get("arguments", {})
+
+                            try:
+                                if isinstance(tool_args, str):
+                                    tool_args = json.loads(tool_args)
+                            except json.JSONDecodeError:
+                                tool_args = {}
+
+                            # 发送工具开始
+                            is_subagent = (tool_name == "delegate_task")
+                            if is_subagent:
+                                logger.info(f"[AgentChat] delegate_task called with args: {tool_args}")
+                            yield f"data: {json.dumps({
+                                'type': 'tool_start',
+                                'tool': tool_name,
+                                'args': tool_args,
+                                'is_subagent': is_subagent
+                            }, ensure_ascii=False)}\n\n"
+
+                            # 添加 assistant 的 tool_call 消息
+                            tool_call_msg = {
+                                "role": "assistant",
+                                "content": None,
+                                "tool_calls": [tc]
+                            }
+                            if message.get("reasoning_content"):
+                                tool_call_msg["reasoning_content"] = message.get("reasoning_content")
+                            llm_messages.append(tool_call_msg)
+
+                            # 执行工具
+                            backend_url = f"http://{settings.HOST or '127.0.0.1'}:{settings.PORT or 8000}"
+                            tool_result = await execute_tool(tool_name, tool_args, base_url=backend_url)
+
+                            tool_calls_log.append({
+                                "tool": tool_name,
+                                "arguments": tool_args,
+                                "result": tool_result
+                            })
+
+                            # 发送工具结束
+                            yield f"data: {json.dumps({
+                                'type': 'tool_end',
+                                'tool': tool_name,
+                                'result': tool_result
+                            }, ensure_ascii=False)}\n\n"
+                            
+                            if is_subagent:
+                                logger.info(f"[AgentChat] delegate_task returned, summary: {tool_result.get('summary', 'N/A')[:200] if isinstance(tool_result, dict) else 'N/A'}")
+
+                            # 添加 tool 角色消息
+                            llm_messages.append({
+                                "role": "tool",
+                                "tool_call_id": tc["id"],
+                                "content": json.dumps(tool_result, ensure_ascii=False)
+                            })
+
+                        # 继续循环
+                        continue
+
+                    # 普通文本回复 - 流式输出
+                    content = _extract_content(message)
+                    if content:
+                        # 逐段输出，模拟打字效果
+                        for i in range(0, len(content), 5):
+                            chunk = content[i:i+5]
+                            response_text += chunk
+                            yield f"data: {json.dumps({'type': 'content', 'content': chunk}, ensure_ascii=False)}\n\n"
+                            await asyncio.sleep(0.01)
+
+                    break  # 完成，退出循环
+
+                else:
+                    # 达到最大调用次数
+                    err_text = "抱歉，执行了太多工具调用，请简化你的问题。"
+                    yield f"data: {json.dumps({'type': 'content', 'content': err_text}, ensure_ascii=False)}\n\n"
+                    response_text = err_text
+            else:
+                # 无工具：直接流式调用
+                full_response = ""
+
+                async for chunk in kimi_client.chat_stream(
+                    messages=llm_messages,
+                    temperature=1.0,
+                    max_tokens=data.max_tokens or 4096,
+                    top_p=1.0,
+                    model=llm_model,
+                    tools=None
+                ):
+                    if chunk.startswith("data: "):
+                        data_str = chunk[6:]
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            parsed = json.loads(data_str)
+                            if "choices" in parsed:
+                                delta = parsed["choices"][0].get("delta", {})
+                                # 同时检查 content 和 reasoning_content（kimi-k2.5 主要在 reasoning_content 返回）
+                                delta_content = delta.get("content", "")
+                                if not delta_content:
+                                    delta_content = delta.get("reasoning_content", "")
+                                if delta_content:
+                                    full_response += delta_content
+                                    yield f"data: {json.dumps({'type': 'content', 'content': delta_content}, ensure_ascii=False)}\n\n"
+                        except json.JSONDecodeError:
+                            continue
+
+                response_text = full_response
+
+            # 发送最终回复
+            if response_text:
+                yield f"data: {json.dumps({'type': 'content', 'content': response_text}, ensure_ascii=False)}\n\n"
+
+            # 保存历史
+            history.append({
+                "role": "assistant",
+                "content": response_text,
+                "time": datetime.utcnow().isoformat(),
+            })
+            _save_session(session_id, history)
+
+            # 保存记忆
+            if memory_enabled and data.use_memory:
+                add_session_memory(
+                    session_id=session_id,
+                    content=f"用户: {data.message}\n助手: {response_text}",
+                    importance=0.8,
+                    tags=["conversation"]
+                )
+
+            # 发送完成信号
+            yield f"data: {json.dumps({
+                'type': 'done',
+                'session_id': session_id,
+                'agent_name': current_agent["name"],
+                'agent_id': current_agent["id"],
+                'tool_calls_log': tool_calls_log if tool_calls_log else None
+            }, ensure_ascii=False)}\n\n"
+
+        except Exception as e:
+            import traceback
+            logger.error(f"流式响应异常: {str(e)}\n{traceback.format_exc()}")
+            yield f"data: {json.dumps({'type': 'error', 'error': f'服务器错误: {str(e)}'}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
     )

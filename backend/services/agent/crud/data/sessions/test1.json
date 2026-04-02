@@ -1,0 +1,12 @@
+[
+  {
+    "role": "user",
+    "content": "say hello in one word",
+    "time": "2026-04-02T01:58:50.063734"
+  },
+  {
+    "role": "assistant",
+    "content": "Hello",
+    "time": "2026-04-02T01:58:55.658643"
+  }
+]

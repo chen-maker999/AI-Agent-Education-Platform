@@ -1,0 +1,32 @@
+[
+  {
+    "id": "2c4c1c3c-ea89-4026-b636-5ce6fc7fcc1b",
+    "content": "用户: 请识别这张图片\n助手: 抱歉，我暂时无法找到您上传的图片文件。能否请您告诉我图片的文件名是什么？或者您可以重新上传图片，我会立即为您识别！🖼️",
+    "scope": "session",
+    "agent_id": null,
+    "user_id": null,
+    "session_id": "test_probe",
+    "created_at": "2026-04-02T10:50:54.577721",
+    "updated_at": "2026-04-02T10:50:54.577741",
+    "importance": 0.8,
+    "tags": [
+      "conversation"
+    ],
+    "metadata": {}
+  },
+  {
+    "id": "1dc71302-9ab7-4780-a7f0-1ac70643481a",
+    "content": "用户: 请识别这张图片\n助手: 抱歉，我仍然没有看到您上传的图片。请您：\n\n1. **重新上传图片** - 直接将图片拖放到对话框中，或点击附件按钮上传\n2. **告诉我图片文件名** - 如果图片已经存在于当前环境中，请提供文件名\n\n一旦您上传了图片或提供了文件名，我会立即为您识别并分析图片内容！📸",
+    "scope": "session",
+    "agent_id": null,
+    "user_id": null,
+    "session_id": "test_probe",
+    "created_at": "2026-04-02T10:53:03.596037",
+    "updated_at": "2026-04-02T10:53:03.596044",
+    "importance": 0.8,
+    "tags": [
+      "conversation"
+    ],
+    "metadata": {}
+  }
+]
